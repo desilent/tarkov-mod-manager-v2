@@ -1,0 +1,68 @@
+name: Build & Publish Docker Image
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:     [ "v*.*.*" ]          # e.g. v1.2.3 → also tags :1.2.3 and :1.2
+  pull_request:
+    branches: [ "main" ]            # build only, no push on PRs
+  workflow_dispatch:                # allow manual trigger from GitHub UI
+
+env:
+  REGISTRY: ghcr.io
+  # Change YOUR_GITHUB_USERNAME to your actual GitHub username
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write       # required to push to ghcr.io
+
+    steps:
+      # ── 1. Checkout ──────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── 2. Multi-arch builder (amd64 + arm64 covers Unraid & Raspberry Pi) ──
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 3. Login to ghcr.io ──────────────────────────────────────────────────
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}   # auto-provided, no setup needed
+
+      # ── 4. Extract tags & labels ─────────────────────────────────────────────
+      #   push to main      → :latest
+      #   push tag v1.2.3   → :1.2.3  :1.2  :latest
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      # ── 5. Build & push ──────────────────────────────────────────────────────
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64   # covers Unraid (x86) + ARM servers
+          push: ${{ github.event_name != 'pull_request' }}
+          tags:   ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha          # GitHub Actions cache — speeds up rebuilds
+          cache-to:   type=gha,mode=max

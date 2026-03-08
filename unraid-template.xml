@@ -1,0 +1,180 @@
+<?xml version="1.0"?>
+<!--
+  Unraid Docker Template — RAID Mod Manager
+  Place this file in:  /boot/config/plugins/dockerMan/templates-user/
+  Then go to Docker → Add Container → scroll to "User Templates"
+
+  Or just fill in the "Add Container" form manually using the values below.
+-->
+<Container version="2">
+
+  <Name>raid-mod-manager</Name>
+  <Repository>ghcr.io/desilent/raid-mod-manager:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>bash</Shell>
+  <Privileged>false</Privileged>
+  <Support/>
+  <Project/>
+  <Overview>
+    Web-based mod manager for SPT-Tarkov, FIKA Server and FIKA Headless.
+    Browse, enable/disable, upload and install mods from a tactical dark UI.
+  </Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:7272]/</WebUI>
+  <TemplateURL/>
+  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/raid-mod-manager/main/docs/icon.png</Icon>
+  <ExtraParams>--restart=unless-stopped</ExtraParams>
+  <DateInstalled/>
+
+  <!-- ── Ports ─────────────────────────────────────────────────────────── -->
+  <Config
+    Name="Web UI Port"
+    Target="7272"
+    Default="7272"
+    Mode="tcp"
+    Description="Port to access the Mod Manager web interface."
+    Type="Port"
+    Display="always"
+    Required="true"
+    Mask="false">7272</Config>
+
+  <!-- ── Volumes ───────────────────────────────────────────────────────── -->
+  <Config
+    Name="Config / Data"
+    Target="/data"
+    Default="/mnt/user/appdata/raid-mod-manager/data"
+    Mode="rw"
+    Description="Stores config.json and persists profile settings across restarts."
+    Type="Path"
+    Display="always"
+    Required="true"
+    Mask="false">/mnt/user/appdata/raid-mod-manager/data</Config>
+
+  <Config
+    Name="FIKA Server — Mods Folder"
+    Target="/mods/fika-server"
+    Default="/mnt/user/appdata/fika-server/BepInEx/plugins"
+    Mode="rw"
+    Description="Path to your FIKA Server BepInEx plugins folder on the Unraid host."
+    Type="Path"
+    Display="always"
+    Required="false"
+    Mask="false">/mnt/user/appdata/fika-server/BepInEx/plugins</Config>
+
+  <Config
+    Name="FIKA Headless — Mods Folder"
+    Target="/mods/fika-headless"
+    Default="/mnt/user/appdata/fika-headless/BepInEx/plugins"
+    Mode="rw"
+    Description="Path to your FIKA Headless BepInEx plugins folder on the Unraid host."
+    Type="Path"
+    Display="always"
+    Required="false"
+    Mask="false">/mnt/user/appdata/fika-headless/BepInEx/plugins</Config>
+
+  <Config
+    Name="SPT Client — Mods Folder (optional)"
+    Target="/mods/spt-client"
+    Default=""
+    Mode="rw"
+    Description="Only needed if your SPT Windows client mods are reachable from Unraid (e.g. via Samba share). Leave blank to skip."
+    Type="Path"
+    Display="always"
+    Required="false"
+    Mask="false"></Config>
+
+  <!-- ── Environment Variables ─────────────────────────────────────────── -->
+  <Config
+    Name="Timezone"
+    Target="TZ"
+    Default="Europe/Berlin"
+    Mode=""
+    Description="Your timezone, e.g. Europe/Berlin or America/New_York."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="false">Europe/Berlin</Config>
+
+  <!-- FIKA Server profile overrides -->
+  <Config
+    Name="FIKA Server — Display Label"
+    Target="PROFILE_FIKA_SERVER_LABEL"
+    Default="FIKA Server"
+    Mode=""
+    Description="Display name shown in the UI for the FIKA Server profile."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">FIKA Server</Config>
+
+  <Config
+    Name="FIKA Server — Accent Colour"
+    Target="PROFILE_FIKA_SERVER_COLOR"
+    Default="#e8b84b"
+    Mode=""
+    Description="Hex colour used for the FIKA Server profile badge in the UI."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">#e8b84b</Config>
+
+  <!-- FIKA Headless profile overrides -->
+  <Config
+    Name="FIKA Headless — Display Label"
+    Target="PROFILE_FIKA_HEADLESS_LABEL"
+    Default="FIKA Headless"
+    Mode=""
+    Description="Display name shown in the UI for the FIKA Headless profile."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">FIKA Headless</Config>
+
+  <Config
+    Name="FIKA Headless — Accent Colour"
+    Target="PROFILE_FIKA_HEADLESS_COLOR"
+    Default="#4be8c0"
+    Mode=""
+    Description="Hex colour used for the FIKA Headless profile badge in the UI."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">#4be8c0</Config>
+
+  <!-- SPT Client profile overrides -->
+  <Config
+    Name="SPT Client — Display Label"
+    Target="PROFILE_SPT_CLIENT_LABEL"
+    Default="SPT Client"
+    Mode=""
+    Description="Display name shown in the UI for the SPT Client profile."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">SPT Client</Config>
+
+  <Config
+    Name="SPT Client — Accent Colour"
+    Target="PROFILE_SPT_CLIENT_COLOR"
+    Default="#e84b4b"
+    Mode=""
+    Description="Hex colour used for the SPT Client profile badge in the UI."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">#e84b4b</Config>
+
+  <!-- Internal data dir override (rarely needed) -->
+  <Config
+    Name="Data Directory (internal)"
+    Target="DATA_DIR"
+    Default="/data"
+    Mode=""
+    Description="Internal container path where config.json is stored. Only change if you know what you're doing."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">/data</Config>
+
+</Container>

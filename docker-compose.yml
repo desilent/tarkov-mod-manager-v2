@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  raid-mod-manager:
+    # ── Option A: pull from ghcr.io (after you've pushed the image) ──────────
+    image: ghcr.io/desilent/raid-mod-manager:latest
+
+    # ── Option B: build locally ───────────────────────────────────────────────
+    # build: .
+
+    container_name: raid-mod-manager
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7272}:7272"
+
+    volumes:
+      # Persistent config
+      - ${APPDATA_DIR:-./data}:/data
+
+      # ── Mod folders — set these to your real Unraid paths ─────────────────
+      - ${FIKA_SERVER_MODS:-/mnt/user/appdata/fika-server/BepInEx/plugins}:/mods/fika-server
+      - ${FIKA_HEADLESS_MODS:-/mnt/user/appdata/fika-headless/BepInEx/plugins}:/mods/fika-headless
+      # Uncomment if SPT client mods are accessible from Unraid (e.g. via SMB):
+      # - ${SPT_CLIENT_MODS:-/mnt/user/spt-client/BepInEx/plugins}:/mods/spt-client
+
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+
+      # ── Profile paths (inside the container — usually no need to change) ───
+      PROFILE_FIKA_SERVER_PATH:    /mods/fika-server
+      PROFILE_FIKA_HEADLESS_PATH:  /mods/fika-headless
+      PROFILE_SPT_CLIENT_PATH:     /mods/spt-client
+
+      # ── Display labels (shown in the UI) ───────────────────────────────────
+      PROFILE_FIKA_SERVER_LABEL:    ${PROFILE_FIKA_SERVER_LABEL:-FIKA Server}
+      PROFILE_FIKA_HEADLESS_LABEL:  ${PROFILE_FIKA_HEADLESS_LABEL:-FIKA Headless}
+      PROFILE_SPT_CLIENT_LABEL:     ${PROFILE_SPT_CLIENT_LABEL:-SPT Client}
+
+      # ── Accent colours (hex) ───────────────────────────────────────────────
+      PROFILE_FIKA_SERVER_COLOR:    ${PROFILE_FIKA_SERVER_COLOR:-#e8b84b}
+      PROFILE_FIKA_HEADLESS_COLOR:  ${PROFILE_FIKA_HEADLESS_COLOR:-#4be8c0}
+      PROFILE_SPT_CLIENT_COLOR:     ${PROFILE_SPT_CLIENT_COLOR:-#e84b4b}

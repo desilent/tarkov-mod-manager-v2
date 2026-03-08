@@ -1,0 +1,1421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAID MOD MANAGER</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@400;500;600;700&family=Share+Tech+Mono&family=Barlow+Condensed:wght@300;400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #0a0c0e;
+    --bg-panel: #0f1215;
+    --bg-card: #141820;
+    --bg-hover: #1a2030;
+    --border: #1e2830;
+    --border-bright: #2a3848;
+    --text-primary: #c8d4e0;
+    --text-secondary: #6a8090;
+    --text-dim: #3a4858;
+    --accent-gold: #e8b84b;
+    --accent-gold-dim: rgba(232,184,75,0.15);
+    --accent-teal: #4be8c0;
+    --accent-teal-dim: rgba(75,232,192,0.12);
+    --accent-red: #e84b4b;
+    --accent-red-dim: rgba(232,75,75,0.12);
+    --accent-blue: #4b8be8;
+    --enabled: #3de87a;
+    --enabled-dim: rgba(61,232,122,0.1);
+    --disabled: #e85a3d;
+    --disabled-dim: rgba(232,90,61,0.1);
+    --scan-line: rgba(255,255,255,0.02);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15px;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Scanline overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scan-line) 2px, var(--scan-line) 4px);
+    pointer-events: none;
+    z-index: 9999;
+    opacity: 0.4;
+  }
+
+  /* Corner bracket decoration */
+  .bracket::before, .bracket::after {
+    content: '';
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-color: var(--accent-gold);
+    border-style: solid;
+    opacity: 0.6;
+  }
+  .bracket::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .bracket::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+  /* ── HEADER ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    height: 56px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .logo-icon {
+    width: 32px;
+    height: 32px;
+    position: relative;
+  }
+
+  .logo-icon svg { width: 100%; height: 100%; }
+
+  .logo-text {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 20px;
+    letter-spacing: 3px;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+  }
+
+  .logo-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 2px;
+    margin-top: 1px;
+  }
+
+  .header-status {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--enabled);
+    box-shadow: 0 0 8px var(--enabled);
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .status-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+
+  /* ── LAYOUT ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    height: calc(100vh - 56px);
+  }
+
+  /* ── SIDEBAR ── */
+  .sidebar {
+    background: var(--bg-panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+  }
+
+  .sidebar-section {
+    padding: 16px 16px 8px;
+  }
+
+  .sidebar-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+    padding-left: 4px;
+  }
+
+  .profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-bottom: 3px;
+    text-align: left;
+    transition: all 0.15s;
+    position: relative;
+  }
+
+  .profile-btn:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+  }
+
+  .profile-btn.active {
+    background: var(--bg-card);
+    border-color: var(--border-bright);
+  }
+
+  .profile-btn.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 4px;
+    bottom: 4px;
+    width: 2px;
+    border-radius: 0 2px 2px 0;
+    background: var(--profile-color, var(--accent-gold));
+  }
+
+  .profile-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 1px;
+    flex-shrink: 0;
+    background: var(--profile-color, var(--accent-gold));
+    box-shadow: 0 0 6px var(--profile-color, var(--accent-gold));
+  }
+
+  .profile-info { flex: 1; min-width: 0; }
+  .profile-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-primary);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .profile-count {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+  }
+
+  .add-profile-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 32px);
+    margin: 8px 16px;
+    padding: 8px 12px;
+    background: none;
+    border: 1px dashed var(--border-bright);
+    border-radius: 3px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    letter-spacing: 1px;
+    transition: all 0.15s;
+  }
+  .add-profile-btn:hover { color: var(--text-primary); border-color: var(--accent-gold); }
+
+  .sidebar-footer {
+    margin-top: auto;
+    padding: 16px;
+    border-top: 1px solid var(--border);
+  }
+
+  .sys-info {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    line-height: 1.8;
+  }
+
+  /* ── MAIN CONTENT ── */
+  .main {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* toolbar */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 24px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  .toolbar-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 2px;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    margin-right: 8px;
+  }
+
+  .profile-badge {
+    padding: 3px 10px;
+    border-radius: 2px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    border: 1px solid;
+  }
+
+  .toolbar-spacer { flex: 1; }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 6px 12px;
+    transition: border-color 0.15s;
+  }
+  .search-box:focus-within { border-color: var(--border-bright); }
+  .search-box input {
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    width: 180px;
+  }
+  .search-box input::placeholder { color: var(--text-dim); }
+
+  .filter-btns {
+    display: flex;
+    gap: 4px;
+  }
+
+  .filter-btn {
+    padding: 5px 12px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    color: var(--text-secondary);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .filter-btn:hover, .filter-btn.active {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+    color: var(--text-primary);
+  }
+
+  .btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border-radius: 2px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 1px solid;
+    text-transform: uppercase;
+  }
+
+  .btn-primary {
+    background: var(--accent-gold-dim);
+    border-color: var(--accent-gold);
+    color: var(--accent-gold);
+  }
+  .btn-primary:hover {
+    background: rgba(232,184,75,0.25);
+    box-shadow: 0 0 12px rgba(232,184,75,0.2);
+  }
+
+  .btn-ghost {
+    background: none;
+    border-color: var(--border-bright);
+    color: var(--text-secondary);
+  }
+  .btn-ghost:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+  .btn-danger {
+    background: var(--accent-red-dim);
+    border-color: var(--accent-red);
+    color: var(--accent-red);
+  }
+  .btn-danger:hover { background: rgba(232,75,75,0.2); }
+
+  /* ── MOD LIST ── */
+  .mod-list-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+  }
+
+  .mod-list-container::-webkit-scrollbar { width: 4px; }
+  .mod-list-container::-webkit-scrollbar-track { background: transparent; }
+  .mod-list-container::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+  .stats-bar {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 18px;
+  }
+
+  .stat-item {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+  }
+
+  .stat-num {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .stat-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+  }
+
+  /* mod header row */
+  .mod-header {
+    display: grid;
+    grid-template-columns: 36px 1fr 90px 100px 90px 110px;
+    gap: 0 12px;
+    padding: 6px 12px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+  }
+
+  /* mod row */
+  .mod-row {
+    display: grid;
+    grid-template-columns: 36px 1fr 90px 100px 90px 110px;
+    gap: 0 12px;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    margin-bottom: 4px;
+    align-items: center;
+    transition: all 0.15s;
+    position: relative;
+    cursor: default;
+  }
+
+  .mod-row:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+  }
+
+  .mod-row.disabled-mod {
+    opacity: 0.5;
+  }
+
+  .mod-row.disabled-mod:hover { opacity: 0.75; }
+
+  .mod-toggle {
+    width: 28px;
+    height: 16px;
+    background: var(--disabled-dim);
+    border: 1px solid var(--disabled);
+    border-radius: 8px;
+    position: relative;
+    cursor: pointer;
+    transition: all 0.2s;
+    flex-shrink: 0;
+  }
+
+  .mod-toggle.on {
+    background: var(--enabled-dim);
+    border-color: var(--enabled);
+  }
+
+  .mod-toggle::after {
+    content: '';
+    position: absolute;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--disabled);
+    top: 2px;
+    left: 2px;
+    transition: all 0.2s;
+  }
+
+  .mod-toggle.on::after {
+    background: var(--enabled);
+    left: 14px;
+    box-shadow: 0 0 6px var(--enabled);
+  }
+
+  .mod-name-cell { min-width: 0; }
+
+  .mod-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 15px;
+    letter-spacing: 0.5px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mod-desc {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-top: 1px;
+  }
+
+  .mod-meta {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .mod-status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    padding: 2px 8px;
+    border-radius: 2px;
+    text-align: center;
+  }
+
+  .mod-status.on  { color: var(--enabled);  background: var(--enabled-dim);  border: 1px solid rgba(61,232,122,0.3); }
+  .mod-status.off { color: var(--disabled); background: var(--disabled-dim); border: 1px solid rgba(232,90,61,0.3); }
+
+  .mod-actions {
+    display: flex;
+    gap: 5px;
+    justify-content: flex-end;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+
+  .mod-row:hover .mod-actions { opacity: 1; }
+
+  .icon-btn {
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+    font-size: 12px;
+  }
+
+  .icon-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+  .icon-btn.danger:hover { color: var(--accent-red); border-color: var(--accent-red); background: var(--accent-red-dim); }
+
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-dim);
+  }
+
+  .empty-state .big-icon {
+    font-size: 48px;
+    margin-bottom: 16px;
+    opacity: 0.5;
+  }
+
+  .empty-state h3 {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 600;
+    font-size: 20px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+  }
+
+  .empty-state p {
+    font-size: 13px;
+    line-height: 1.6;
+  }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+
+  .modal-overlay.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    width: 480px;
+    max-width: calc(100vw - 40px);
+    position: relative;
+    transform: translateY(10px);
+    transition: transform 0.2s;
+  }
+
+  .modal-overlay.open .modal { transform: translateY(0); }
+
+  .modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .modal-title {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+
+  .modal-close {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: 16px;
+    transition: all 0.15s;
+  }
+  .modal-close:hover { color: var(--text-primary); border-color: var(--border-bright); }
+
+  .modal-body { padding: 20px; }
+
+  .modal-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 20px;
+  }
+
+  .modal-tab {
+    flex: 1;
+    padding: 8px;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    transition: all 0.15s;
+  }
+  .modal-tab.active {
+    background: var(--accent-gold-dim);
+    border-color: var(--accent-gold);
+    color: var(--accent-gold);
+  }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .form-group { margin-bottom: 16px; }
+
+  .form-label {
+    display: block;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    text-transform: uppercase;
+  }
+
+  .form-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    padding: 9px 12px;
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .form-input:focus { border-color: var(--accent-gold); }
+
+  .upload-zone {
+    border: 2px dashed var(--border-bright);
+    border-radius: 3px;
+    padding: 30px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s;
+    color: var(--text-secondary);
+  }
+
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent-gold);
+    background: var(--accent-gold-dim);
+    color: var(--accent-gold);
+  }
+
+  .upload-icon { font-size: 32px; margin-bottom: 10px; }
+  .upload-text { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; letter-spacing: 1px; }
+  .upload-hint { font-family: 'Share Tech Mono', monospace; font-size: 10px; margin-top: 6px; opacity: 0.6; }
+
+  .modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* ── TOAST ── */
+  #toasts {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    z-index: 300;
+  }
+
+  .toast {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 3px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    min-width: 260px;
+    transform: translateX(20px);
+    opacity: 0;
+    transition: all 0.25s;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  }
+
+  .toast.show { transform: translateX(0); opacity: 1; }
+  .toast.success { border-left: 3px solid var(--enabled); }
+  .toast.error   { border-left: 3px solid var(--accent-red); }
+  .toast.info    { border-left: 3px solid var(--accent-gold); }
+
+  .loading-spinner {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border-bright);
+    border-top-color: var(--accent-gold);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .progress-bar {
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--accent-gold);
+    width: 0%;
+    transition: width 0.3s;
+    box-shadow: 0 0 6px var(--accent-gold);
+  }
+
+  /* Confirm modal */
+  .confirm-modal { width: 380px; }
+  .confirm-msg { font-size: 14px; line-height: 1.6; color: var(--text-secondary); }
+  .confirm-target { color: var(--accent-red); font-family: 'Share Tech Mono', monospace; font-size: 12px; margin-top: 8px; }
+
+  /* Divider */
+  .divider {
+    height: 1px;
+    background: var(--border);
+    margin: 12px 0;
+  }
+
+  /* Settings section */
+  .profile-path-hint {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    margin-top: 4px;
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 32 32" fill="none">
+        <polygon points="16,2 28,10 28,22 16,30 4,22 4,10" stroke="#e8b84b" stroke-width="1.5" fill="none" opacity="0.6"/>
+        <polygon points="16,7 23,12 23,20 16,25 9,20 9,12" fill="#e8b84b" opacity="0.15"/>
+        <line x1="16" y1="2" x2="16" y2="30" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <line x1="4" y1="10" x2="28" y2="22" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <line x1="28" y1="10" x2="4" y2="22" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <circle cx="16" cy="16" r="3" fill="#e8b84b"/>
+      </svg>
+    </div>
+    <div>
+      <div class="logo-text">Raid Mod Manager</div>
+      <div class="logo-sub">SPT · FIKA · HEADLESS</div>
+    </div>
+  </div>
+  <div class="header-status">
+    <div class="status-dot" id="apiDot" style="background:var(--text-dim);box-shadow:none;animation:none"></div>
+    <span class="status-label" id="apiStatus">CONNECTING...</span>
+    <span class="status-label" style="color:var(--text-dim)" id="clockEl"></span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Profiles</div>
+      <div id="profileList"></div>
+    </div>
+    <button class="add-profile-btn" onclick="openAddProfile()">
+      <span>＋</span> Add Profile
+    </button>
+    <div class="sidebar-footer">
+      <div class="sys-info" id="sysInfo">
+        VER: 1.0.0<br>
+        API: <span id="apiVer">—</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+    <!-- Toolbar -->
+    <div class="toolbar">
+      <div>
+        <div class="toolbar-title" id="toolbarTitle">Select Profile</div>
+        <div id="profileBadge"></div>
+      </div>
+      <div class="toolbar-spacer"></div>
+      <div class="search-box">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="#6a8090" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#6a8090" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" id="searchInput" placeholder="SEARCH MODS..." oninput="renderMods()">
+      </div>
+      <div class="filter-btns">
+        <button class="filter-btn active" data-filter="all" onclick="setFilter(this,'all')">ALL</button>
+        <button class="filter-btn" data-filter="enabled" onclick="setFilter(this,'enabled')">ON</button>
+        <button class="filter-btn" data-filter="disabled" onclick="setFilter(this,'disabled')">OFF</button>
+      </div>
+      <button class="btn btn-ghost" onclick="refreshMods()">↻ REFRESH</button>
+      <button class="btn btn-primary" onclick="openInstallModal()" id="installBtn" disabled>＋ INSTALL MOD</button>
+    </div>
+
+    <!-- Mod list -->
+    <div class="mod-list-container">
+      <div class="stats-bar" id="statsBar" style="display:none">
+        <div class="stat-item">
+          <span class="stat-num" id="statTotal" style="color:var(--text-primary)">0</span>
+          <span class="stat-label">TOTAL</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statEnabled" style="color:var(--enabled)">0</span>
+          <span class="stat-label">ENABLED</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statDisabled" style="color:var(--disabled)">0</span>
+          <span class="stat-label">DISABLED</span>
+        </div>
+        <div class="stat-item">
+          <span class="stat-num" id="statSize" style="color:var(--accent-gold)">0</span>
+          <span class="stat-label">TOTAL SIZE</span>
+        </div>
+      </div>
+
+      <div class="mod-header" id="modHeader" style="display:none">
+        <span></span>
+        <span>MOD NAME</span>
+        <span>VERSION</span>
+        <span>AUTHOR</span>
+        <span>STATUS</span>
+        <span style="text-align:right">ACTIONS</span>
+      </div>
+
+      <div id="modList">
+        <div class="empty-state">
+          <div class="big-icon">◈</div>
+          <h3>No Profile Selected</h3>
+          <p>Choose a profile from the sidebar<br>to view and manage its mods.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- INSTALL MODAL -->
+<div class="modal-overlay" id="installModal">
+  <div class="modal bracket">
+    <div class="modal-header">
+      <div class="modal-title">Install Mod</div>
+      <button class="modal-close" onclick="closeModal('installModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-tabs">
+        <button class="modal-tab active" onclick="switchTab('upload')">Upload File</button>
+        <button class="modal-tab" onclick="switchTab('url')">From URL</button>
+      </div>
+
+      <!-- Upload tab -->
+      <div class="tab-content active" id="tabUpload">
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+          <div class="upload-icon">⬆</div>
+          <div class="upload-text">Drop mod file or click to browse</div>
+          <div class="upload-hint">.zip · .tar.gz · .js · .ts · folder archives</div>
+        </div>
+        <input type="file" id="fileInput" style="display:none" accept=".zip,.tar,.gz,.tgz,.js,.ts,.json" onchange="handleFileSelect(this)">
+        <div id="uploadProgress" style="display:none; margin-top:12px;">
+          <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-secondary)" id="uploadFileName"></div>
+          <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+        </div>
+      </div>
+
+      <!-- URL tab -->
+      <div class="tab-content" id="tabUrl">
+        <div class="form-group">
+          <label class="form-label">Mod Download URL</label>
+          <input type="url" class="form-input" id="urlInput" placeholder="https://github.com/.../mod.zip">
+        </div>
+        <div class="profile-path-hint">Supports: GitHub releases, direct .zip/.tar.gz links</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('installModal')">Cancel</button>
+      <button class="btn btn-primary" id="installConfirmBtn" onclick="confirmInstall()">Install</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD PROFILE MODAL -->
+<div class="modal-overlay" id="profileModal">
+  <div class="modal bracket">
+    <div class="modal-header">
+      <div class="modal-title" id="profileModalTitle">Add Profile</div>
+      <button class="modal-close" onclick="closeModal('profileModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Profile Name</label>
+        <input type="text" class="form-input" id="pName" placeholder="e.g. My SPT Client">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Mods Path (server-side)</label>
+        <input type="text" class="form-input" id="pPath" placeholder="/mods/my-spt-client">
+        <div class="profile-path-hint">Absolute path inside the Docker container / server filesystem</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Color</label>
+        <input type="color" class="form-input" id="pColor" value="#e8b84b" style="height:40px;padding:4px 8px;cursor:pointer">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('profileModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProfile()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIRM MODAL -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal confirm-modal bracket">
+    <div class="modal-header">
+      <div class="modal-title">Confirm Delete</div>
+      <button class="modal-close" onclick="closeModal('confirmModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="confirm-msg">This will permanently delete the mod from disk. This action cannot be undone.</div>
+      <div class="confirm-target" id="confirmTarget"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('confirmModal')">Cancel</button>
+      <button class="btn btn-danger" id="confirmDeleteBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOASTS -->
+<div id="toasts"></div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let state = {
+  profiles: {},
+  activeProfile: null,
+  mods: [],
+  filter: 'all',
+  editingProfile: null,
+  pendingDelete: null,
+  activeTab: 'upload',
+  selectedFile: null,
+};
+
+const API = '';  // same origin
+
+// ── Init ──────────────────────────────────────────────────────────────────
+async function init() {
+  startClock();
+  await checkHealth();
+  await loadConfig();
+}
+
+function startClock() {
+  const el = document.getElementById('clockEl');
+  function tick() {
+    el.textContent = new Date().toLocaleTimeString('en-GB', {hour12:false});
+    setTimeout(tick, 1000);
+  }
+  tick();
+}
+
+async function checkHealth() {
+  try {
+    const r = await fetch(`${API}/api/health`);
+    const d = await r.json();
+    document.getElementById('apiDot').style.cssText = 'background:var(--enabled);box-shadow:0 0 8px var(--enabled);animation:pulse 2s infinite';
+    document.getElementById('apiStatus').textContent = 'ONLINE';
+    document.getElementById('apiVer').textContent = d.version || '?';
+  } catch {
+    document.getElementById('apiDot').style.cssText = 'background:var(--accent-red);box-shadow:0 0 8px var(--accent-red);animation:none';
+    document.getElementById('apiStatus').textContent = 'OFFLINE';
+  }
+}
+
+async function loadConfig() {
+  try {
+    const r = await fetch(`${API}/api/config`);
+    const d = await r.json();
+    state.profiles = d.profiles || {};
+    renderSidebar();
+    // Auto-select first profile
+    const first = Object.keys(state.profiles)[0];
+    if (first) selectProfile(first);
+  } catch(e) {
+    toast('Failed to load config', 'error');
+  }
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────
+function renderSidebar() {
+  const el = document.getElementById('profileList');
+  el.innerHTML = '';
+  Object.entries(state.profiles).forEach(([id, p]) => {
+    const count = id === state.activeProfile ? state.mods.length : '…';
+    const enabled = id === state.activeProfile ? state.mods.filter(m=>m.enabled).length : '';
+    const btn = document.createElement('button');
+    btn.className = 'profile-btn' + (id === state.activeProfile ? ' active' : '');
+    btn.style.setProperty('--profile-color', p.color || '#e8b84b');
+    btn.innerHTML = `
+      <div class="profile-dot" style="background:${p.color};box-shadow:0 0 6px ${p.color}"></div>
+      <div class="profile-info">
+        <div class="profile-name">${p.label}</div>
+        <div class="profile-count">${id === state.activeProfile ? `${enabled} on / ${count} total` : '—'}</div>
+      </div>
+    `;
+    btn.onclick = () => selectProfile(id);
+    btn.oncontextmenu = (e) => { e.preventDefault(); openEditProfile(id); };
+    el.appendChild(btn);
+  });
+}
+
+async function selectProfile(id) {
+  state.activeProfile = id;
+  state.mods = [];
+  document.getElementById('installBtn').disabled = false;
+  renderSidebar();
+  renderToolbar();
+  renderMods();
+  await refreshMods();
+}
+
+function renderToolbar() {
+  const p = state.profiles[state.activeProfile];
+  if (!p) return;
+  document.getElementById('toolbarTitle').textContent = p.label;
+  const badge = document.getElementById('profileBadge');
+  badge.innerHTML = `<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;
+}
+
+async function refreshMods() {
+  if (!state.activeProfile) return;
+  try {
+    const r = await fetch(`${API}/api/mods/${state.activeProfile}`);
+    const d = await r.json();
+    state.mods = d.mods || [];
+    renderMods();
+    renderSidebar();
+  } catch(e) {
+    toast('Failed to load mods', 'error');
+  }
+}
+
+// ── Mod List ──────────────────────────────────────────────────────────────
+function setFilter(btn, f) {
+  state.filter = f;
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderMods();
+}
+
+function renderMods() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  let mods = state.mods.filter(m => {
+    if (state.filter === 'enabled' && !m.enabled) return false;
+    if (state.filter === 'disabled' && m.enabled) return false;
+    if (q && !m.name.toLowerCase().includes(q) && !(m.author||'').toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  // Stats
+  const total = state.mods.length;
+  const enabled = state.mods.filter(m=>m.enabled).length;
+  const totalSize = state.mods.reduce((a,m)=>a+m.size,0);
+  document.getElementById('statTotal').textContent = total;
+  document.getElementById('statEnabled').textContent = enabled;
+  document.getElementById('statDisabled').textContent = total - enabled;
+  document.getElementById('statSize').textContent = fmtSize(totalSize);
+  document.getElementById('statsBar').style.display = total > 0 ? 'flex' : 'none';
+  document.getElementById('modHeader').style.display = total > 0 ? 'grid' : 'none';
+
+  const el = document.getElementById('modList');
+  if (!state.activeProfile) {
+    el.innerHTML = `<div class="empty-state"><div class="big-icon">◈</div><h3>No Profile Selected</h3><p>Choose a profile from the sidebar<br>to view and manage its mods.</p></div>`;
+    return;
+  }
+  if (mods.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="big-icon">📦</div><h3>${total===0?'No Mods Installed':'No Results'}</h3><p>${total===0?'Click <strong>+ INSTALL MOD</strong> to add your first mod.':'Try adjusting the search or filter.'}</p></div>`;
+    return;
+  }
+
+  el.innerHTML = mods.map(m => `
+    <div class="mod-row ${m.enabled?'':'disabled-mod'}" data-mod="${esc(m.name)}">
+      <div class="mod-toggle ${m.enabled?'on':''}" title="${m.enabled?'Disable':'Enable'}" onclick="toggleMod('${esc(m.name)}',${!m.enabled})"></div>
+      <div class="mod-name-cell">
+        <div class="mod-name">${esc(m.name)}</div>
+        ${m.description ? `<div class="mod-desc">${esc(m.description)}</div>` : ''}
+      </div>
+      <div class="mod-meta">${m.version ? 'v'+esc(m.version) : '—'}</div>
+      <div class="mod-meta">${m.author ? esc(m.author) : '—'}</div>
+      <div><span class="mod-status ${m.enabled?'on':'off'}">${m.enabled?'ENABLED':'DISABLED'}</span></div>
+      <div class="mod-actions">
+        <button class="icon-btn danger" title="Delete mod" onclick="confirmDelete('${esc(m.name)}')">🗑</button>
+      </div>
+    </div>
+  `).join('');
+}
+
+async function toggleMod(name, enable) {
+  try {
+    const r = await fetch(`${API}/api/mods/toggle`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ profile: state.activeProfile, mod_name: name, enabled: enable })
+    });
+    if (!r.ok) throw new Error((await r.json()).detail);
+    const mod = state.mods.find(m=>m.name===name);
+    if (mod) mod.enabled = enable;
+    renderMods(); renderSidebar();
+    toast(`${name} ${enable?'enabled':'disabled'}`, 'success');
+  } catch(e) {
+    toast(e.message || 'Toggle failed', 'error');
+  }
+}
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+function confirmDelete(name) {
+  state.pendingDelete = name;
+  document.getElementById('confirmTarget').textContent = name;
+  document.getElementById('confirmDeleteBtn').onclick = () => deleteMod(name);
+  openModal('confirmModal');
+}
+
+async function deleteMod(name) {
+  try {
+    const r = await fetch(`${API}/api/mods/${state.activeProfile}/${encodeURIComponent(name)}`, {method:'DELETE'});
+    if (!r.ok) throw new Error((await r.json()).detail);
+    state.mods = state.mods.filter(m=>m.name!==name);
+    renderMods(); renderSidebar();
+    closeModal('confirmModal');
+    toast(`${name} deleted`, 'success');
+  } catch(e) {
+    toast(e.message || 'Delete failed', 'error');
+  }
+}
+
+// ── Install Modal ─────────────────────────────────────────────────────────
+let currentTab = 'upload';
+
+function openInstallModal() {
+  state.selectedFile = null;
+  document.getElementById('fileInput').value = '';
+  document.getElementById('urlInput').value = '';
+  document.getElementById('uploadProgress').style.display = 'none';
+  switchTab('upload');
+  openModal('installModal');
+}
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.modal-tab').forEach((b,i) => b.classList.toggle('active', (i===0&&tab==='upload')||(i===1&&tab==='url')));
+  document.getElementById('tabUpload').classList.toggle('active', tab==='upload');
+  document.getElementById('tabUrl').classList.toggle('active', tab==='url');
+}
+
+function handleFileSelect(input) {
+  const f = input.files[0];
+  if (!f) return;
+  state.selectedFile = f;
+  document.getElementById('uploadFileName').textContent = f.name;
+  document.getElementById('uploadProgress').style.display = 'block';
+  document.getElementById('progressFill').style.width = '0%';
+}
+
+// Drag & drop
+const zone = document.getElementById('uploadZone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+zone.addEventListener('drop', e => {
+  e.preventDefault();
+  zone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) { state.selectedFile = f; document.getElementById('uploadFileName').textContent = f.name; document.getElementById('uploadProgress').style.display = 'block'; document.getElementById('progressFill').style.width = '0%'; }
+});
+
+async function confirmInstall() {
+  if (currentTab === 'upload') {
+    if (!state.selectedFile) { toast('No file selected', 'error'); return; }
+    await uploadMod(state.selectedFile);
+  } else {
+    const url = document.getElementById('urlInput').value.trim();
+    if (!url) { toast('Enter a URL', 'error'); return; }
+    await installFromUrl(url);
+  }
+}
+
+async function uploadMod(file) {
+  const btn = document.getElementById('installConfirmBtn');
+  btn.disabled = true;
+  const fill = document.getElementById('progressFill');
+  try {
+    const fd = new FormData();
+    fd.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = e => { if (e.lengthComputable) fill.style.width = (e.loaded/e.total*100)+'%'; };
+    await new Promise((res, rej) => {
+      xhr.onload = () => {
+        if (xhr.status === 200) res(JSON.parse(xhr.responseText));
+        else rej(new Error(JSON.parse(xhr.responseText).detail || 'Upload failed'));
+      };
+      xhr.onerror = () => rej(new Error('Network error'));
+      xhr.open('POST', `${API}/api/mods/${state.activeProfile}/upload`);
+      xhr.send(fd);
+    });
+    fill.style.width = '100%';
+    toast(`Installed: ${file.name}`, 'success');
+    closeModal('installModal');
+    await refreshMods();
+  } catch(e) {
+    toast(e.message || 'Upload failed', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function installFromUrl(url) {
+  const btn = document.getElementById('installConfirmBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Installing...';
+  try {
+    const r = await fetch(`${API}/api/mods/install-url`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ profile: state.activeProfile, url })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail);
+    toast(d.message || 'Installed', 'success');
+    closeModal('installModal');
+    await refreshMods();
+  } catch(e) {
+    toast(e.message || 'Install failed', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Install';
+  }
+}
+
+// ── Profile Modal ─────────────────────────────────────────────────────────
+function openAddProfile() {
+  state.editingProfile = null;
+  document.getElementById('profileModalTitle').textContent = 'Add Profile';
+  document.getElementById('pName').value = '';
+  document.getElementById('pPath').value = '';
+  document.getElementById('pColor').value = '#e8b84b';
+  openModal('profileModal');
+}
+
+function openEditProfile(id) {
+  state.editingProfile = id;
+  const p = state.profiles[id];
+  document.getElementById('profileModalTitle').textContent = 'Edit Profile';
+  document.getElementById('pName').value = p.label;
+  document.getElementById('pPath').value = p.path;
+  document.getElementById('pColor').value = p.color || '#e8b84b';
+  openModal('profileModal');
+}
+
+async function saveProfile() {
+  const label = document.getElementById('pName').value.trim();
+  const path  = document.getElementById('pPath').value.trim();
+  const color = document.getElementById('pColor').value;
+  if (!label || !path) { toast('Name and path are required', 'error'); return; }
+
+  try {
+    if (state.editingProfile) {
+      await fetch(`${API}/api/config/profile/${state.editingProfile}`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({label, path, color})
+      });
+    } else {
+      await fetch(`${API}/api/config/profile`, {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({label, path, color})
+      });
+    }
+    await loadConfig();
+    closeModal('profileModal');
+    toast('Profile saved', 'success');
+  } catch(e) {
+    toast('Save failed', 'error');
+  }
+}
+
+// ── Modal helpers ─────────────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ── Toast ─────────────────────────────────────────────────────────────────
+function toast(msg, type='info') {
+  const icons = {success:'✓', error:'✕', info:'◈'};
+  const el = document.createElement('div');
+  el.className = `toast ${type}`;
+  el.innerHTML = `<span>${icons[type]||'●'}</span><span>${msg}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  requestAnimationFrame(() => { requestAnimationFrame(() => el.classList.add('show')); });
+  setTimeout(() => { el.classList.remove('show'); setTimeout(() => el.remove(), 300); }, 3500);
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes+'B';
+  if (bytes < 1048576) return (bytes/1024).toFixed(1)+'KB';
+  if (bytes < 1073741824) return (bytes/1048576).toFixed(1)+'MB';
+  return (bytes/1073741824).toFixed(2)+'GB';
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
