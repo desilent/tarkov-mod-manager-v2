@@ -1003,6 +1003,158 @@
     border-top: 1px solid var(--border);
   }
 
+  /* ── VIEW NAV BUTTONS ── */
+  .view-nav-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 10px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    text-align: left;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .view-nav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+  .view-nav-btn.active {
+    background: var(--accent-gold-dim);
+    border-color: rgba(232,184,75,0.3);
+    color: var(--accent-gold);
+  }
+  .view-nav-btn span {
+    font-size: 14px;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* ── PRESET CARDS ── */
+  .preset-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 14px 16px;
+    margin-bottom: 8px;
+    transition: all 0.15s;
+    animation: fadeIn 0.15s ease;
+    position: relative;
+  }
+  .preset-card:hover {
+    background: var(--bg-hover);
+    border-color: var(--border-bright);
+  }
+
+  .preset-card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+
+  .preset-card-name {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 1px;
+    color: var(--text-primary);
+    flex: 1;
+  }
+
+  .preset-card-actions {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+
+  .preset-card-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .preset-meta-item {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-secondary);
+    letter-spacing: 0.5px;
+  }
+  .preset-meta-item strong {
+    color: var(--text-primary);
+    font-weight: normal;
+  }
+
+  .preset-mod-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+
+  .preset-mod-tag {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    padding: 2px 6px;
+    border-radius: 2px;
+    border: 1px solid;
+  }
+  .preset-mod-tag.on {
+    color: var(--enabled);
+    border-color: rgba(61,232,122,0.25);
+    background: var(--enabled-dim);
+  }
+  .preset-mod-tag.off {
+    color: var(--text-dim);
+    border-color: var(--border);
+    background: transparent;
+  }
+
+  /* diff display for load confirmation */
+  .preset-diff-section {
+    margin-bottom: 10px;
+  }
+  .preset-diff-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+  }
+  .preset-diff-label.will-enable { color: var(--enabled); }
+  .preset-diff-label.will-disable { color: var(--disabled); }
+  .preset-diff-label.no-change { color: var(--text-dim); }
+
+  .preset-diff-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+    margin-bottom: 8px;
+  }
+
+  /* save preset preview */
+  .save-preset-preview-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 3px 0;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+  }
+  .save-preset-preview-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 768px) {
     .hamburger { display: flex; }
@@ -1096,6 +1248,16 @@
     <button class="add-profile-btn" onclick="openAddProfile()">
       <span>＋</span> Add Profile
     </button>
+
+    <div class="sidebar-section" style="padding-top:0">
+      <div class="sidebar-label">Views</div>
+      <button class="view-nav-btn active" id="navMods" onclick="switchView('mods')">
+        <span>▦</span> Mods
+      </button>
+      <button class="view-nav-btn" id="navPresets" onclick="switchView('presets')">
+        <span>◫</span> Presets
+      </button>
+    </div>
     <div class="sidebar-footer">
       <div class="sys-info">
         VER: 2.0.0<br>
@@ -1106,6 +1268,8 @@
 
   <!-- MAIN -->
   <main class="main">
+    <!-- ═══ MODS VIEW ═══ -->
+    <div id="viewMods">
     <!-- Toolbar -->
     <div class="toolbar">
       <div>
@@ -1172,6 +1336,30 @@
         </div>
       </div>
     </div>
+    </div><!-- /viewMods -->
+
+    <!-- ═══ PRESETS VIEW ═══ -->
+    <div id="viewPresets" style="display:none">
+      <div class="toolbar">
+        <div>
+          <div class="toolbar-title" id="presetsToolbarTitle">Presets</div>
+          <div id="presetsBadge"></div>
+        </div>
+        <div class="toolbar-spacer"></div>
+        <button class="btn btn-primary btn-sm" onclick="openSavePresetModal()" id="savePresetBtn" disabled>＋ SAVE CURRENT AS PRESET</button>
+      </div>
+
+      <div class="mod-list-container" id="presetsContainer">
+        <div id="presetsLockBannerSlot"></div>
+        <div id="presetsList">
+          <div class="empty-state">
+            <div class="big-icon">◫</div>
+            <h3>No Profile Selected</h3>
+            <p>Choose a profile from the sidebar,<br>then save or load mod presets here.</p>
+          </div>
+        </div>
+      </div>
+    </div><!-- /viewPresets -->
   </main>
 </div>
 
@@ -1272,6 +1460,55 @@
   </div>
 </div>
 
+<!-- SAVE PRESET MODAL -->
+<div class="modal-overlay" id="savePresetModal">
+  <div class="modal bracket">
+    <div class="modal-header">
+      <div class="modal-title">Save Preset</div>
+      <button class="modal-close" onclick="closeModal('savePresetModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
+        This will snapshot the current enabled/disabled state of all mods in
+        <strong id="savePresetProfileLabel" style="color:var(--text-primary)"></strong>.
+      </p>
+      <div class="form-group">
+        <label class="form-label">Preset Name</label>
+        <input type="text" class="form-input" id="presetNameInput" placeholder="e.g. FIKA Co-op, Solo Raids">
+      </div>
+      <div id="savePresetPreview" style="max-height:200px;overflow-y:auto;margin-top:8px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('savePresetModal')">Cancel</button>
+      <button class="btn btn-primary" id="savePresetConfirmBtn" onclick="confirmSavePreset()">Save Preset</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOAD PRESET CONFIRM MODAL -->
+<div class="modal-overlay" id="loadPresetModal">
+  <div class="modal bracket" style="width:520px">
+    <div class="modal-header">
+      <div class="modal-title">Load Preset</div>
+      <button class="modal-close" onclick="closeModal('loadPresetModal')">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:6px;">
+        Loading <strong id="loadPresetName" style="color:var(--accent-gold)"></strong> will
+        <strong style="color:var(--disabled)">disable all mods not in this preset</strong> (strict mode).
+      </p>
+      <p style="font-size:11px;color:var(--text-dim);margin-bottom:14px;">
+        No files are deleted — disabled mods are moved to __disabled__ and can be re-enabled later.
+      </p>
+      <div id="loadPresetDiff" style="max-height:280px;overflow-y:auto;"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('loadPresetModal')">Cancel</button>
+      <button class="btn btn-primary" id="loadPresetConfirmBtn">Load Preset</button>
+    </div>
+  </div>
+</div>
+
 <!-- TOASTS -->
 <div id="toasts"></div>
 
@@ -1287,6 +1524,8 @@ const state = {
   selectedFile: null,
   containers: {},
   containerPollTimer: null,
+  currentView: 'mods',  // 'mods' | 'presets'
+  presets: {},           // { presetId: { label, mods, ... } }
 };
 
 const API = '';  // same origin
@@ -1351,6 +1590,10 @@ async function fetchContainerStatuses() {
     renderContainerBar();
     renderLockBanner();
     renderSidebar();
+    if (state.currentView === 'presets') {
+      renderPresetsToolbar();
+      renderPresets();
+    }
   } catch { /* silently ignore — docker socket may not be mounted */ }
 }
 
@@ -1508,11 +1751,16 @@ function renderSidebar() {
 async function selectProfile(id) {
   state.activeProfile = id;
   state.mods = [];
+  state.presets = {};
   renderSidebar();
   renderToolbar();
   renderMods();
   renderLockBanner();
   await refreshMods();
+  if (state.currentView === 'presets') {
+    renderPresetsToolbar();
+    await refreshPresets();
+  }
 }
 
 function renderToolbar() {
@@ -1802,6 +2050,265 @@ async function deleteEditingProfile() {
     closeModal('profileModal');
     await loadConfig();
     toast(`Profile "${label}" deleted`, 'success');
+  } catch(e) {
+    toast(e.message || 'Delete failed', 'error');
+  }
+}
+
+// ── View switching ────────────────────────────────────────────────────────
+function switchView(view) {
+  state.currentView = view;
+  document.getElementById('viewMods').style.display = view === 'mods' ? '' : 'none';
+  document.getElementById('viewPresets').style.display = view === 'presets' ? '' : 'none';
+  document.getElementById('navMods').classList.toggle('active', view === 'mods');
+  document.getElementById('navPresets').classList.toggle('active', view === 'presets');
+  if (view === 'presets') {
+    renderPresetsToolbar();
+    refreshPresets();
+  }
+}
+
+// ── Presets ───────────────────────────────────────────────────────────────
+async function refreshPresets() {
+  if (!state.activeProfile) return;
+  try {
+    const r = await fetch(`${API}/api/presets/${state.activeProfile}`);
+    const d = await r.json();
+    state.presets = d.presets || {};
+    renderPresets();
+  } catch(e) {
+    toast('Failed to load presets', 'error');
+  }
+}
+
+function renderPresetsToolbar() {
+  const p = state.profiles[state.activeProfile];
+  if (!p) {
+    document.getElementById('presetsToolbarTitle').textContent = 'Presets';
+    document.getElementById('presetsBadge').innerHTML = '';
+    document.getElementById('savePresetBtn').disabled = true;
+    return;
+  }
+  document.getElementById('presetsToolbarTitle').textContent = p.label + ' Presets';
+  document.getElementById('presetsBadge').innerHTML = `<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;
+  document.getElementById('savePresetBtn').disabled = isProfileLocked(state.activeProfile);
+}
+
+function renderPresets() {
+  const el = document.getElementById('presetsList');
+  const lockSlot = document.getElementById('presetsLockBannerSlot');
+  const locked = state.activeProfile ? isProfileLocked(state.activeProfile) : false;
+
+  // Lock banner for presets view
+  if (locked && state.activeProfile) {
+    const label = state.profiles[state.activeProfile]?.label || state.activeProfile;
+    lockSlot.innerHTML = `
+      <div class="lock-banner">
+        <span class="lock-banner-icon">🔒</span>
+        <span><strong>${esc(label)}</strong> container is RUNNING — preset changes are locked</span>
+        <button class="lock-banner-stop" onclick="containerAction('${esc(state.activeProfile)}','stop')">■ STOP</button>
+      </div>`;
+  } else {
+    lockSlot.innerHTML = '';
+  }
+  document.getElementById('savePresetBtn').disabled = !state.activeProfile || locked;
+
+  if (!state.activeProfile) {
+    el.innerHTML = `<div class="empty-state"><div class="big-icon">◫</div><h3>No Profile Selected</h3><p>Choose a profile from the sidebar,<br>then save or load mod presets here.</p></div>`;
+    return;
+  }
+
+  const entries = Object.entries(state.presets);
+  if (entries.length === 0) {
+    el.innerHTML = `<div class="empty-state"><div class="big-icon">◫</div><h3>No Presets Yet</h3><p>Click <strong>+ SAVE CURRENT AS PRESET</strong> to snapshot<br>your current mod configuration.</p></div>`;
+    return;
+  }
+
+  el.innerHTML = entries.map(([id, p]) => {
+    const enabledMods = Object.entries(p.mods || {}).filter(([,v]) => v).map(([k]) => k);
+    const disabledMods = Object.entries(p.mods || {}).filter(([,v]) => !v).map(([k]) => k);
+    const date = p.updated || p.created;
+    const dateStr = date ? new Date(date).toLocaleDateString('en-GB', {day:'numeric',month:'short',year:'numeric'}) : '—';
+
+    return `
+      <div class="preset-card">
+        <div class="preset-card-header">
+          <div class="preset-card-name">${esc(p.label)}</div>
+          <div class="preset-card-actions">
+            <button class="btn btn-primary btn-sm" onclick="confirmLoadPreset('${esc(id)}')" ${locked?'disabled':''} title="Load this preset (strict mode)">▶ LOAD</button>
+            <button class="btn btn-ghost btn-sm" onclick="updatePreset('${esc(id)}')" ${locked?'disabled':''} title="Overwrite with current mod states">↻ UPDATE</button>
+            <button class="icon-btn danger" onclick="confirmDeletePreset('${esc(id)}')" title="Delete preset">🗑</button>
+          </div>
+        </div>
+        <div class="preset-card-meta">
+          <div class="preset-meta-item"><strong>${p.enabled_count || 0}</strong> enabled / <strong>${p.mod_count || 0}</strong> total</div>
+          <div class="preset-meta-item">Updated: <strong>${dateStr}</strong></div>
+        </div>
+        <div class="preset-mod-tags">
+          ${enabledMods.slice(0, 12).map(m => `<span class="preset-mod-tag on">${esc(m)}</span>`).join('')}
+          ${disabledMods.slice(0, 6).map(m => `<span class="preset-mod-tag off">${esc(m)}</span>`).join('')}
+          ${(enabledMods.length + disabledMods.length) > 18 ? `<span class="preset-mod-tag off">+${enabledMods.length + disabledMods.length - 18} more</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function openSavePresetModal() {
+  if (!state.activeProfile || isProfileLocked(state.activeProfile)) return;
+  const p = state.profiles[state.activeProfile];
+  document.getElementById('savePresetProfileLabel').textContent = p?.label || state.activeProfile;
+  document.getElementById('presetNameInput').value = '';
+
+  // Show preview of what will be saved
+  const preview = document.getElementById('savePresetPreview');
+  if (state.mods.length > 0) {
+    preview.innerHTML = state.mods.map(m => `
+      <div class="save-preset-preview-row">
+        <div class="save-preset-preview-dot" style="background:${m.enabled ? 'var(--enabled)' : 'var(--disabled)'}"></div>
+        <span style="color:${m.enabled ? 'var(--text-primary)' : 'var(--text-dim)'}">${esc(m.name)}</span>
+        <span style="color:var(--text-dim);margin-left:auto">${m.enabled ? 'ON' : 'OFF'}</span>
+      </div>
+    `).join('');
+  } else {
+    preview.innerHTML = '<div style="font-size:11px;color:var(--text-dim);padding:8px 0">No mods to snapshot — install some mods first.</div>';
+  }
+
+  openModal('savePresetModal');
+  setTimeout(() => document.getElementById('presetNameInput').focus(), 100);
+}
+
+async function confirmSavePreset() {
+  const label = document.getElementById('presetNameInput').value.trim();
+  if (!label) { toast('Enter a preset name', 'error'); return; }
+  if (!state.activeProfile) return;
+
+  const btn = document.getElementById('savePresetConfirmBtn');
+  btn.disabled = true;
+  try {
+    const r = await fetch(`${API}/api/presets/${state.activeProfile}`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ label })
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Save failed');
+    toast(`Preset "${label}" saved`, 'success');
+    closeModal('savePresetModal');
+    await refreshPresets();
+  } catch(e) {
+    toast(e.message || 'Save failed', 'error');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function confirmLoadPreset(presetId) {
+  const preset = state.presets[presetId];
+  if (!preset) return;
+  document.getElementById('loadPresetName').textContent = preset.label;
+
+  // Compute diff: what will change?
+  const presetMods = preset.mods || {};
+  const currentByName = {};
+  state.mods.forEach(m => { currentByName[m.name] = m.enabled; });
+
+  const willEnable = [];
+  const willDisable = [];
+  const staysOn = [];
+  const staysOff = [];
+  const unknownInPreset = []; // in preset but not on disk
+
+  // Everything in preset
+  for (const [name, shouldEnable] of Object.entries(presetMods)) {
+    if (!(name in currentByName)) {
+      unknownInPreset.push({ name, target: shouldEnable });
+      continue;
+    }
+    if (shouldEnable && !currentByName[name]) willEnable.push(name);
+    else if (!shouldEnable && currentByName[name]) willDisable.push(name);
+    else if (shouldEnable) staysOn.push(name);
+    else staysOff.push(name);
+  }
+
+  // Strict mode: mods on disk but NOT in preset → will be disabled
+  for (const [name, isEnabled] of Object.entries(currentByName)) {
+    if (!(name in presetMods)) {
+      if (isEnabled) willDisable.push(name);
+      else staysOff.push(name);
+    }
+  }
+
+  const diff = document.getElementById('loadPresetDiff');
+  let html = '';
+
+  if (willEnable.length > 0) {
+    html += `<div class="preset-diff-section"><div class="preset-diff-label will-enable">▲ Will be enabled (${willEnable.length})</div><div class="preset-diff-list">${willEnable.map(n => `<span class="preset-mod-tag on">${esc(n)}</span>`).join('')}</div></div>`;
+  }
+  if (willDisable.length > 0) {
+    html += `<div class="preset-diff-section"><div class="preset-diff-label will-disable">▼ Will be disabled (${willDisable.length})</div><div class="preset-diff-list">${willDisable.map(n => `<span class="preset-mod-tag off" style="color:var(--disabled);border-color:rgba(232,90,61,0.3)">${esc(n)}</span>`).join('')}</div></div>`;
+  }
+  if (staysOn.length > 0) {
+    html += `<div class="preset-diff-section"><div class="preset-diff-label no-change">— Stays enabled (${staysOn.length})</div><div class="preset-diff-list">${staysOn.map(n => `<span class="preset-mod-tag on" style="opacity:0.5">${esc(n)}</span>`).join('')}</div></div>`;
+  }
+  if (unknownInPreset.length > 0) {
+    html += `<div class="preset-diff-section"><div class="preset-diff-label no-change">? Not found on disk (${unknownInPreset.length})</div><div class="preset-diff-list">${unknownInPreset.map(u => `<span class="preset-mod-tag off">${esc(u.name)}</span>`).join('')}</div></div>`;
+  }
+  if (willEnable.length === 0 && willDisable.length === 0) {
+    html = '<div style="font-size:12px;color:var(--text-secondary);padding:12px 0;text-align:center;">No changes needed — current mods already match this preset.</div>';
+  }
+
+  diff.innerHTML = html;
+
+  document.getElementById('loadPresetConfirmBtn').onclick = () => executeLoadPreset(presetId);
+  openModal('loadPresetModal');
+}
+
+async function executeLoadPreset(presetId) {
+  const btn = document.getElementById('loadPresetConfirmBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spinner"></span> Loading...';
+  try {
+    const r = await fetch(`${API}/api/presets/${state.activeProfile}/${presetId}/load`, { method: 'POST' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Load failed');
+    const total = (d.enabled?.length || 0) + (d.disabled?.length || 0);
+    toast(`Preset "${d.preset}" loaded — ${total} mod(s) changed`, 'success');
+    closeModal('loadPresetModal');
+    await refreshMods();
+    await refreshPresets();
+  } catch(e) {
+    toast(e.message || 'Load failed', 'error');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = 'Load Preset';
+  }
+}
+
+async function updatePreset(presetId) {
+  if (!state.activeProfile || isProfileLocked(state.activeProfile)) return;
+  const preset = state.presets[presetId];
+  if (!preset) return;
+  if (!confirm(`Overwrite "${preset.label}" with your current mod states?`)) return;
+  try {
+    const r = await fetch(`${API}/api/presets/${state.activeProfile}/${presetId}`, { method: 'PUT' });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.detail || 'Update failed');
+    toast(`Preset "${preset.label}" updated`, 'success');
+    await refreshPresets();
+  } catch(e) {
+    toast(e.message || 'Update failed', 'error');
+  }
+}
+
+async function confirmDeletePreset(presetId) {
+  const preset = state.presets[presetId];
+  if (!preset) return;
+  if (!confirm(`Delete preset "${preset.label}"? This does not affect your mods on disk.`)) return;
+  try {
+    const r = await fetch(`${API}/api/presets/${state.activeProfile}/${presetId}`, { method: 'DELETE' });
+    if (!r.ok) throw new Error('Delete failed');
+    toast(`Preset "${preset.label}" deleted`, 'success');
+    await refreshPresets();
   } catch(e) {
     toast(e.message || 'Delete failed', 'error');
   }

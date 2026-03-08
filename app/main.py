@@ -226,6 +226,12 @@ class InstallUrlRequest(BaseModel):
     profile: str
     url: str
 
+class PresetSaveRequest(BaseModel):
+    label: str
+
+class PresetLoadRequest(BaseModel):
+    pass  # no body needed, profile + preset_id in URL
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def get_mod_dir(profile_id: str) -> Path:
     cfg = load_config()
@@ -352,6 +358,63 @@ def _sync_download(url: str, dest: Path):
     """Blocking URL download — run in executor."""
     import urllib.request
     urllib.request.urlretrieve(url, dest)
+
+# ── Presets ───────────────────────────────────────────────────────────────────
+PRESETS_FILE = DATA_DIR / "presets.json"
+
+def load_presets() -> dict:
+    if PRESETS_FILE.exists():
+        try:
+            with open(PRESETS_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {}
+
+def save_presets(data: dict):
+    with open(PRESETS_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+def apply_preset(profile_id: str, preset: dict):
+    """Apply a preset (strict mode): enable mods listed as true,
+    disable everything else on disk."""
+    mod_dir = get_mod_dir(profile_id)
+    disabled_dir = mod_dir / "__disabled__"
+    disabled_dir.mkdir(exist_ok=True)
+
+    mod_states = preset.get("mods", {})
+    moved = {"enabled": [], "disabled": []}
+
+    # Build a set of all mod names currently on disk (enabled + disabled)
+    all_mods = {}  # name → ("enabled"|"disabled", Path)
+    for item in sorted(mod_dir.iterdir()):
+        if item.name.startswith(".") or (item.name.startswith("__") and item.name.endswith("__")):
+            continue
+        if item.is_dir() or item.suffix in (".js", ".ts", ".json"):
+            all_mods[item.name] = ("enabled", item)
+
+    if disabled_dir.exists():
+        for item in sorted(disabled_dir.iterdir()):
+            if item.name.startswith(".") or (item.name.startswith("__") and item.name.endswith("__")):
+                continue
+            all_mods[item.name] = ("disabled", item)
+
+    for mod_name, (current_state, path) in all_mods.items():
+        # Strict mode: if mod is not in preset, disable it
+        should_enable = mod_states.get(mod_name, False)
+
+        if should_enable and current_state == "disabled":
+            # Move from __disabled__ → mod_dir
+            dest = mod_dir / mod_name
+            shutil.move(str(path), str(dest))
+            moved["enabled"].append(mod_name)
+        elif not should_enable and current_state == "enabled":
+            # Move from mod_dir → __disabled__
+            dest = disabled_dir / mod_name
+            shutil.move(str(path), str(dest))
+            moved["disabled"].append(mod_name)
+
+    return moved
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 
@@ -480,6 +543,90 @@ def list_container_statuses():
     for profile_id, container_name in CONTAINER_MAP.items():
         result[profile_id] = get_container_status(container_name)
     return result
+
+# ── Preset Routes ─────────────────────────────────────────────────────────────
+
+@app.get("/api/presets/{profile}")
+def list_presets(profile: str):
+    """List all presets for a profile."""
+    presets = load_presets()
+    profile_presets = presets.get(profile, {})
+    return {"profile": profile, "presets": profile_presets}
+
+@app.post("/api/presets/{profile}")
+def save_preset(profile: str, req: PresetSaveRequest):
+    """Snapshot current mod states into a new preset."""
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it first")
+
+    mod_dir = get_mod_dir(profile)
+    mods = scan_mods(mod_dir)
+    mod_states = {m["name"]: m["enabled"] for m in mods}
+
+    preset_id = req.label.lower().replace(" ", "-")
+    # Deduplicate IDs
+    presets = load_presets()
+    if profile not in presets:
+        presets[profile] = {}
+
+    presets[profile][preset_id] = {
+        "label": req.label,
+        "mods": mod_states,
+        "mod_count": len(mod_states),
+        "enabled_count": sum(1 for v in mod_states.values() if v),
+        "created": datetime.now().isoformat(),
+        "updated": datetime.now().isoformat(),
+    }
+    save_presets(presets)
+    return {"ok": True, "id": preset_id, "preset": presets[profile][preset_id]}
+
+@app.put("/api/presets/{profile}/{preset_id}")
+def update_preset(profile: str, preset_id: str):
+    """Overwrite a preset with current mod states (re-snapshot)."""
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it first")
+
+    presets = load_presets()
+    if profile not in presets or preset_id not in presets[profile]:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    mod_dir = get_mod_dir(profile)
+    mods = scan_mods(mod_dir)
+    mod_states = {m["name"]: m["enabled"] for m in mods}
+
+    presets[profile][preset_id]["mods"] = mod_states
+    presets[profile][preset_id]["mod_count"] = len(mod_states)
+    presets[profile][preset_id]["enabled_count"] = sum(1 for v in mod_states.values() if v)
+    presets[profile][preset_id]["updated"] = datetime.now().isoformat()
+    save_presets(presets)
+    return {"ok": True, "preset": presets[profile][preset_id]}
+
+@app.post("/api/presets/{profile}/{preset_id}/load")
+def load_preset(profile: str, preset_id: str):
+    """Apply a preset: strict mode — enable listed mods, disable everything else."""
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before loading a preset")
+
+    presets = load_presets()
+    if profile not in presets or preset_id not in presets[profile]:
+        raise HTTPException(status_code=404, detail="Preset not found")
+
+    preset = presets[profile][preset_id]
+    moved = apply_preset(profile, preset)
+    return {
+        "ok": True,
+        "preset": preset["label"],
+        "enabled": moved["enabled"],
+        "disabled": moved["disabled"],
+    }
+
+@app.delete("/api/presets/{profile}/{preset_id}")
+def delete_preset(profile: str, preset_id: str):
+    presets = load_presets()
+    if profile in presets and preset_id in presets[profile]:
+        del presets[profile][preset_id]
+        save_presets(presets)
+    return {"ok": True}
 
 @app.get("/api/containers/{profile}")
 def container_status(profile: str):
