@@ -117,8 +117,8 @@
   .stat-item { display: flex; align-items: baseline; gap: 5px; }
   .stat-num { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 24px; line-height: 1; }
   .stat-label { font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-secondary); letter-spacing: 1px; }
-  .mod-header { display: grid; grid-template-columns: 34px 1fr 60px 80px 90px 56px 50px; gap: 0 10px; padding: 5px 10px; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 1px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
-  .mod-row { display: grid; grid-template-columns: 34px 1fr 60px 80px 90px 56px 50px; gap: 0 10px; padding: 9px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 3px; margin-bottom: 3px; align-items: center; transition: all 0.15s; animation: fadeIn 0.15s ease; }
+  .mod-header { display: grid; grid-template-columns: 34px 1fr 70px 80px 90px 56px 50px; gap: 0 10px; padding: 5px 10px; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: var(--text-dim); letter-spacing: 1px; border-bottom: 1px solid var(--border); margin-bottom: 4px; }
+  .mod-row { display: grid; grid-template-columns: 34px 1fr 70px 80px 90px 56px 50px; gap: 0 10px; padding: 9px 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 3px; margin-bottom: 3px; align-items: center; transition: all 0.15s; animation: fadeIn 0.15s ease; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
   .mod-row:hover { background: var(--bg-hover); border-color: var(--border-bright); }
   .mod-row.disabled-mod { opacity: 0.5; }
@@ -136,9 +136,9 @@
   .mod-status.on { color: var(--enabled); background: var(--enabled-dim); border: 1px solid rgba(61,232,122,0.3); }
   .mod-status.off { color: var(--disabled); background: var(--disabled-dim); border: 1px solid rgba(232,90,61,0.3); }
   /* Folder type badge */
-  .folder-badge { font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.5px; padding: 1px 5px; border-radius: 2px; text-align: center; }
-  .folder-badge.mods { color: var(--accent-gold); background: var(--accent-gold-dim); border: 1px solid rgba(232,184,75,0.25); }
-  .folder-badge.plugins { color: var(--accent-teal); background: var(--accent-teal-dim); border: 1px solid rgba(75,232,192,0.25); }
+  .folder-badge { font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1px; padding: 2px 6px; border-radius: 2px; text-align: center; font-weight: bold; white-space: nowrap; }
+  .folder-badge.mods { color: var(--accent-gold); background: var(--accent-gold-dim); border: 1px solid rgba(232,184,75,0.35); }
+  .folder-badge.plugins { color: var(--accent-teal); background: var(--accent-teal-dim); border: 1px solid rgba(75,232,192,0.35); }
   .mod-actions { display: flex; gap: 4px; justify-content: flex-end; opacity: 0; transition: opacity 0.15s; }
   .mod-row:hover .mod-actions { opacity: 1; }
   .icon-btn { width: 24px; height: 24px; display: flex; align-items: center; justify-content: center; background: none; border: 1px solid var(--border-bright); border-radius: 2px; cursor: pointer; color: var(--text-secondary); transition: all 0.15s; font-size: 11px; }
