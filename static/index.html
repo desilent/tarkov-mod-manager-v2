@@ -1204,6 +1204,7 @@ async function fetchContainerStatuses() {
     state.containers = await r.json();
     renderContainerBar();
     renderLockBanner();
+    renderSidebar();   // update dot colours live
   } catch { /* silently ignore — docker socket may not be mounted */ }
 }
 
@@ -1314,6 +1315,21 @@ async function loadConfig() {
 }
 
 // ── Sidebar ───────────────────────────────────────────────────────────────
+function containerStatusColor(profileId) {
+  const c = state.containers[profileId];
+  if (!c || !c.name) return null;           // no container configured
+  if (!c.available) return '#3a4858';       // grey — unknown/not found
+  if (c.state === 'running') return 'var(--enabled)';   // green
+  return 'var(--disabled)';                // red — stopped
+}
+
+function containerStatusGlow(profileId) {
+  const c = state.containers[profileId];
+  if (!c || !c.name || !c.available) return 'none';
+  if (c.state === 'running') return '0 0 6px var(--enabled)';
+  return '0 0 4px var(--disabled)';
+}
+
 function renderSidebar() {
   const el = document.getElementById('profileList');
   el.innerHTML = '';
@@ -1323,11 +1339,24 @@ function renderSidebar() {
     const btn = document.createElement('button');
     btn.className = 'profile-btn' + (id === state.activeProfile ? ' active' : '');
     btn.style.setProperty('--profile-color', p.color || '#e8b84b');
+
+    // Dot: show container status colour if configured, else fallback to profile colour
+    const dotColor = containerStatusColor(id) || p.color;
+    const dotGlow  = containerStatusGlow(id) !== 'none' ? containerStatusGlow(id) : `0 0 6px ${p.color}`;
+
+    // Status label under name
+    const c = state.containers[id];
+    let statusLabel = id === state.activeProfile ? `${enabled} on / ${count} total` : '—';
+    if (c && c.name) {
+      const stateStr = c.available ? c.state.toUpperCase() : 'UNKNOWN';
+      statusLabel = (id === state.activeProfile ? `${enabled} on / ${count} total · ` : '') + stateStr;
+    }
+
     btn.innerHTML = `
-      <div class="profile-dot" style="background:${p.color};box-shadow:0 0 6px ${p.color}"></div>
+      <div class="profile-dot" style="background:${dotColor};box-shadow:${dotGlow}"></div>
       <div class="profile-info">
         <div class="profile-name">${p.label}</div>
-        <div class="profile-count">${id === state.activeProfile ? `${enabled} on / ${count} total` : '—'}</div>
+        <div class="profile-count">${statusLabel}</div>
       </div>
     `;
     btn.onclick = () => selectProfile(id);

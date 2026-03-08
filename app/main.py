@@ -223,7 +223,7 @@ def scan_mods(mod_dir: Path) -> list[dict]:
 
     # Enabled mods: direct subdirs or .js/.ts files in mod_dir
     for item in sorted(mod_dir.iterdir()):
-        if item.name.startswith("."):
+        if item.name.startswith(".") or (item.name.startswith("__") and item.name.endswith("__")):
             continue
         if item.is_dir() or item.suffix in (".js", ".ts", ".json"):
             meta = read_mod_meta(item)
@@ -240,7 +240,7 @@ def scan_mods(mod_dir: Path) -> list[dict]:
     disabled_dir = mod_dir / "__disabled__"
     if disabled_dir.exists():
         for item in sorted(disabled_dir.iterdir()):
-            if item.name.startswith("."):
+            if item.name.startswith(".") or (item.name.startswith("__") and item.name.endswith("__")):
                 continue
             meta = read_mod_meta(item)
             mods.append({
