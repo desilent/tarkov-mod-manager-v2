@@ -426,9 +426,9 @@
         <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
           <div class="upload-icon">⬆</div>
           <div class="upload-text">Drop mod file or click to browse</div>
-          <div class="upload-hint">.zip · .tar.gz · .js · .dll · folder archives</div>
+          <div class="upload-hint">.zip · .7z · .rar · .tar.gz · .dll · .js</div>
         </div>
-        <input type="file" id="fileInput" style="display:none" accept=".zip,.tar,.gz,.tgz,.js,.ts,.json,.dll" onchange="handleFileSelect(this)">
+        <input type="file" id="fileInput" style="display:none" accept=".zip,.tar,.gz,.tgz,.7z,.rar,.js,.ts,.json,.dll" onchange="handleFileSelect(this)">
         <div id="uploadProgress" style="display:none;margin-top:10px;">
           <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--text-secondary)" id="uploadFileName"></div>
           <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>

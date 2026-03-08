@@ -372,8 +372,16 @@ def get_size(path: Path) -> int:
     except Exception: pass
     return total
 
+ARCHIVE_SUFFIXES = {".zip", ".tar", ".gz", ".tgz", ".7z", ".rar", ".tar.gz", ".tar.bz2", ".tar.xz"}
+
+def _is_archive(filename: str) -> bool:
+    """Check if filename looks like an archive."""
+    name = filename.lower()
+    return any(name.endswith(s) for s in ARCHIVE_SUFFIXES)
+
 def extract_archive_to_staging(archive_path: Path) -> Path:
-    """Extract archive to a temp staging dir and return the staging path."""
+    """Extract archive to a temp staging dir and return the staging path.
+    Supports zip, tar.*, 7z, and RAR via p7zip-full."""
     staging = archive_path.parent / "__staging__"
     staging.mkdir(parents=True, exist_ok=True)
     if zipfile.is_zipfile(archive_path):
@@ -383,8 +391,17 @@ def extract_archive_to_staging(archive_path: Path) -> Path:
         with tarfile.open(archive_path, "r:*") as t:
             t.extractall(staging)
     else:
-        dest = staging / archive_path.name
-        shutil.move(str(archive_path), str(dest))
+        # Fallback to 7z command — handles .7z, .rar, and anything else
+        import subprocess
+        result = subprocess.run(
+            ["7z", "x", str(archive_path), f"-o{staging}", "-y", "-bso0", "-bsp0"],
+            capture_output=True, text=True, timeout=120
+        )
+        if result.returncode != 0:
+            # Not an archive at all — just move the file
+            logger.warning(f"7z extraction failed: {result.stderr[:200]}")
+            dest = staging / archive_path.name
+            shutil.move(str(archive_path), str(dest))
     return staging
 
 def detect_spt_structure(staging: Path) -> dict:
@@ -635,7 +652,7 @@ async def smart_install_upload(file: UploadFile = File(...)):
             f.write(content)
 
         suffix = Path(file.filename).suffix.lower()
-        if suffix in (".zip", ".tar", ".gz", ".tgz"):
+        if _is_archive(file.filename):
             staging = extract_archive_to_staging(tmp_file)
             tmp_file.unlink(missing_ok=True)
         else:
@@ -675,7 +692,7 @@ async def smart_install_url(req: InstallUrlRequest):
         await loop.run_in_executor(_executor, _sync_download, req.url, tmp_file)
 
         suffix = Path(filename).suffix.lower()
-        if suffix in (".zip", ".tar", ".gz", ".tgz"):
+        if _is_archive(filename):
             staging = extract_archive_to_staging(tmp_file)
             tmp_file.unlink(missing_ok=True)
         else:
