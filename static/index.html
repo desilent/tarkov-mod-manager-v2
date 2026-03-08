@@ -94,17 +94,38 @@
   .btn-danger:hover { background: rgba(232,75,75,0.2); }
   .btn-sm { padding: 4px 8px; font-size: 17px; }
 
-  /* ── CONTAINER BAR ── */
-  .container-bar { display: flex; align-items: center; gap: 8px; padding: 6px 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 34px; flex-wrap: wrap; }
-  .container-bar-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-dim); letter-spacing: 1px; }
-  .container-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 4px; border: 1px solid var(--border); background: var(--bg-card); font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 1px; color: var(--text-secondary); transition: all 0.2s; }
-  .container-pill.running { border-color: rgba(61,232,122,0.4); color: var(--enabled); background: var(--enabled-dim); }
-  .container-pill.stopped { border-color: rgba(232,90,61,0.3); color: var(--disabled); background: var(--disabled-dim); }
-  .container-pill-dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
-  .container-pill.running .container-pill-dot { box-shadow: 0 0 5px var(--enabled); animation: pulse 2s infinite; }
-  .container-pill-btn { margin-left: 4px; padding: 1px 7px; height: 18px; background: none; border: 1px solid currentColor; border-radius: 3px; cursor: pointer; font-family: 'Share Tech Mono', monospace; font-size: 10px; color: inherit; opacity: 0.8; }
-  .container-pill-btn:hover { opacity: 1; }
-  .container-pill-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  /* ── SIDEBAR CONTAINER CONTROL ── */
+  .profile-container-ctl {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 3px;
+  }
+  .profile-container-status {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.5px;
+  }
+  .profile-container-status.running { color: var(--enabled); }
+  .profile-container-status.stopped { color: var(--disabled); }
+  .profile-container-status.unknown { color: var(--text-dim); }
+  .profile-ctl-btn {
+    padding: 1px 6px;
+    height: 16px;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.5px;
+    color: inherit;
+    opacity: 0.7;
+    transition: opacity 0.15s;
+    line-height: 1;
+  }
+  .profile-ctl-btn:hover { opacity: 1; }
+  .profile-ctl-btn:disabled { opacity: 0.3; cursor: not-allowed; }
   .lock-banner { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(240,96,80,0.08); border: 1px solid rgba(240,96,80,0.3); border-radius: 4px; margin-bottom: 14px; font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--disabled); animation: fadeIn 0.2s ease; }
   .lock-banner-icon { font-size: 17px; flex-shrink: 0; }
   .lock-banner-stop { margin-left: auto; padding: 4px 12px; background: var(--disabled-dim); border: 1px solid var(--disabled); border-radius: 3px; cursor: pointer; font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--disabled); letter-spacing: 1px; flex-shrink: 0; }
@@ -350,7 +371,6 @@
         <button class="btn btn-ghost btn-sm" onclick="refreshMods()">↻ REFRESH</button>
         <button class="btn btn-primary btn-sm" onclick="openInstallModal()" id="installBtn" disabled>＋ INSTALL MOD</button>
       </div>
-      <div class="container-bar" id="containerBar" style="display:none"><span class="container-bar-label">CONTAINERS</span><div id="containerPills"></div></div>
       <div class="mod-list-container">
         <div id="lockBannerSlot"></div>
         <div class="stats-bar" id="statsBar" style="display:none">
@@ -529,9 +549,32 @@ async function loadConfig(){try{const r=await fetch(`${API}/api/config`);const d
 
 // ── Sidebar ──
 function containerStatusColor(pid){const c=state.containers[pid];if(!c||!c.name)return null;if(!c.available)return'#3a4858';if(c.state==='running')return'var(--enabled)';return'var(--disabled)';}
-function renderSidebar(){const el=document.getElementById('profileList');el.innerHTML='';Object.entries(state.profiles).forEach(([id,p])=>{const count=id===state.activeProfile?state.mods.length:'…';const enabled=id===state.activeProfile?state.mods.filter(m=>m.enabled).length:'';const btn=document.createElement('button');btn.className='profile-btn'+(id===state.activeProfile?' active':'');btn.style.setProperty('--profile-color',p.color||'#e8b84b');const dc=containerStatusColor(id)||p.color;const dg=containerStatusColor(id)?`0 0 6px ${dc}`:`0 0 6px ${p.color}`;const c=state.containers[id];let sl=id===state.activeProfile?`${enabled}/${count}`:'';;if(c&&c.name){const ss=c.available?c.state.toUpperCase():'N/A';sl=(id===state.activeProfile?`${enabled}/${count} · `:'')+ss;}
-btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${sl?`<div class="profile-count">${sl}</div>`:''}</div><span class="profile-edit-btn" title="Edit profile">⚙</span>`;
-btn.onclick=e=>{if(e.target.closest('.profile-edit-btn')){openEditProfile(id);return;}selectProfile(id);closeSidebar();};el.appendChild(btn);});}
+function renderContainerBar(){/* removed — controls are in sidebar now */}
+function renderSidebar(){const el=document.getElementById('profileList');el.innerHTML='';Object.entries(state.profiles).forEach(([id,p])=>{const count=id===state.activeProfile?state.mods.length:'…';const enabled=id===state.activeProfile?state.mods.filter(m=>m.enabled).length:'';const btn=document.createElement('button');btn.className='profile-btn'+(id===state.activeProfile?' active':'');btn.style.setProperty('--profile-color',p.color||'#f0c050');const dc=containerStatusColor(id)||p.color;const dg=containerStatusColor(id)?`0 0 6px ${dc}`:`0 0 6px ${p.color}`;const c=state.containers[id];
+
+// Build status line with mod counts
+let countLabel=id===state.activeProfile?`${enabled}/${count}`:'';
+
+// Build container control HTML
+let ctlHtml='';
+if(c&&c.name){
+  const isRun=c.available&&c.state==='running';
+  const isStopped=c.available&&c.state!=='running';
+  const stateClass=c.available?c.state:'unknown';
+  const stateLabel=c.available?c.state.toUpperCase():'N/A';
+  const btnLabel=isRun?'■ STOP':'▶ START';
+  const btnAction=isRun?'stop':'start';
+  ctlHtml=`<div class="profile-container-ctl"><span class="profile-container-status ${stateClass}">${stateLabel}</span><button class="profile-ctl-btn" ${!c.available?'disabled':''} onclick="event.stopPropagation();containerAction('${esc(id)}','${btnAction}')">${btnLabel}</button></div>`;
+}
+
+// Combine count and container status
+let subLine='';
+if(countLabel&&ctlHtml) subLine=`<div class="profile-count">${countLabel}</div>${ctlHtml}`;
+else if(countLabel) subLine=`<div class="profile-count">${countLabel}</div>`;
+else if(ctlHtml) subLine=ctlHtml;
+
+btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${subLine}</div><span class="profile-edit-btn" title="Edit profile">⚙</span>`;
+btn.onclick=e=>{if(e.target.closest('.profile-edit-btn')||e.target.closest('.profile-ctl-btn')){if(e.target.closest('.profile-edit-btn'))openEditProfile(id);return;}selectProfile(id);closeSidebar();};el.appendChild(btn);});}
 
 async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}if(state.currentView==='mods')showLogPanel();}
 function renderToolbar(){const p=state.profiles[state.activeProfile];if(!p)return;document.getElementById('toolbarTitle').textContent=p.label;document.getElementById('profileBadge').innerHTML=`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;}
