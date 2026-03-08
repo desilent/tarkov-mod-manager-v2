@@ -341,8 +341,7 @@
 
 <div class="layout">
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-section"><div class="sidebar-label">Profiles</div><div id="profileList"></div></div>
-    <button class="add-profile-btn" onclick="openAddProfile()"><span>＋</span> Add Profile</button>
+    <div class="sidebar-section"><div class="sidebar-label">Containers</div><div id="profileList"></div></div>
     <div class="sidebar-section" style="padding-top:0">
       <div class="sidebar-label">Views</div>
       <button class="view-nav-btn active" id="navMods" onclick="switchView('mods')"><span>▦</span> Mods</button>
@@ -358,7 +357,7 @@
     <!-- MODS VIEW -->
     <div id="viewMods">
       <div class="toolbar">
-        <div><div class="toolbar-title" id="toolbarTitle">Select Profile</div><div id="profileBadge"></div></div>
+        <div><div class="toolbar-title" id="toolbarTitle">Select Container</div><div id="profileBadge"></div></div>
         <div class="toolbar-spacer"></div>
         <div class="search-box">
           <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="#6a8090" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#6a8090" stroke-width="1.5" stroke-linecap="round"/></svg>
@@ -383,7 +382,7 @@
           <div class="stat-item"><span class="stat-num" id="statSize" style="color:var(--accent-gold)">0</span><span class="stat-label">SIZE</span></div>
         </div>
         <div class="mod-header" id="modHeader" style="display:none"><span></span><span>MOD NAME</span><span>TYPE</span><span>VERSION</span><span>AUTHOR</span><span>STATUS</span><span></span></div>
-        <div id="modList"><div class="empty-state"><div class="big-icon">◈</div><h3>No Profile Selected</h3><p>Choose a profile from the sidebar.</p></div></div>
+        <div id="modList"><div class="empty-state"><div class="big-icon">◈</div><h3>No Container Selected</h3><p>Choose a container from the sidebar.</p></div></div>
       </div>
       <div class="log-panel" id="logPanel" style="display:none">
         <div class="log-divider" onclick="toggleLogPanel()">
@@ -406,7 +405,7 @@
       </div>
       <div class="mod-list-container" id="presetsContainer">
         <div id="presetsLockBannerSlot"></div>
-        <div id="presetsList"><div class="empty-state"><div class="big-icon">◫</div><h3>No Profile Selected</h3><p>Choose a profile, then save or load presets.</p></div></div>
+        <div id="presetsList"><div class="empty-state"><div class="big-icon">◫</div><h3>No Container Selected</h3><p>Choose a container, then save or load presets.</p></div></div>
       </div>
     </div>
   </main>
@@ -418,7 +417,7 @@
     <div class="modal-header"><div class="modal-title">Smart Install</div><button class="modal-close" onclick="closeModal('installModal')">✕</button></div>
     <div class="modal-body">
       <p style="font-size:12px;color:var(--text-secondary);margin-bottom:14px;line-height:1.6;">
-        Upload a mod and it will be <strong style="color:var(--text-primary)">auto-detected</strong> and installed to all matching profiles.<br>
+        Upload a mod and it will be <strong style="color:var(--text-primary)">auto-detected</strong> and installed to the selected container.<br>
         <span style="color:var(--text-dim)">Server mods → user/mods · BepInEx plugins → BepInEx/plugins</span>
       </p>
       <div class="modal-tabs">
@@ -453,9 +452,9 @@
 <!-- PROFILE MODAL -->
 <div class="modal-overlay" id="profileModal">
   <div class="modal bracket">
-    <div class="modal-header"><div class="modal-title" id="profileModalTitle">Add Profile</div><button class="modal-close" onclick="closeModal('profileModal')">✕</button></div>
+    <div class="modal-header"><div class="modal-title" id="profileModalTitle">Add Container</div><button class="modal-close" onclick="closeModal('profileModal')">✕</button></div>
     <div class="modal-body">
-      <div class="form-group"><label class="form-label">Profile Name</label><input type="text" class="form-input" id="pName" placeholder="e.g. FIKA Server"></div>
+      <div class="form-group"><label class="form-label">Container Name</label><input type="text" class="form-input" id="pName" placeholder="e.g. FIKA Server"></div>
       <div class="form-group">
         <label class="form-label">Server Mods Path (user/mods)</label>
         <input type="text" class="form-input" id="pModsPath" placeholder="/mods/fika-server">
@@ -468,7 +467,7 @@
       </div>
       <div class="form-group"><label class="form-label">Color</label><input type="color" class="form-input" id="pColor" value="#e8b84b" style="height:36px;padding:3px 6px;cursor:pointer"></div>
       <div class="profile-delete-section" id="profileDeleteSection" style="display:none">
-        <button class="btn btn-danger btn-sm" onclick="deleteEditingProfile()" style="width:100%">Delete This Profile</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteEditingProfile()" style="width:100%">Delete This Container</button>
       </div>
     </div>
     <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('profileModal')">Cancel</button><button class="btn btn-primary" onclick="saveProfile()">Save</button></div>
@@ -576,8 +575,8 @@ if(countLabel&&ctlHtml) subLine=`<div class="profile-count">${countLabel}</div>$
 else if(countLabel) subLine=`<div class="profile-count">${countLabel}</div>`;
 else if(ctlHtml) subLine=ctlHtml;
 
-btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${subLine}</div><span class="profile-edit-btn" title="Edit profile">⚙</span>`;
-btn.onclick=e=>{if(e.target.closest('.profile-edit-btn')||e.target.closest('.profile-ctl-btn')){if(e.target.closest('.profile-edit-btn'))openEditProfile(id);return;}selectProfile(id);closeSidebar();};el.appendChild(btn);});}
+btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${subLine}</div>`;
+btn.onclick=e=>{if(e.target.closest('.profile-ctl-btn'))return;selectProfile(id);closeSidebar();};el.appendChild(btn);});}
 
 async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}if(state.currentView==='mods')showLogPanel();}
 function renderToolbar(){const p=state.profiles[state.activeProfile];if(!p)return;document.getElementById('toolbarTitle').textContent=p.label;document.getElementById('profileBadge').innerHTML=`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;}
@@ -587,7 +586,7 @@ async function refreshMods(){if(!state.activeProfile)return;try{const r=await fe
 function setFilter(btn,f){state.filter=f;document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));btn.classList.add('active');renderMods();}
 function renderMods(){const q=document.getElementById('searchInput').value.toLowerCase();const mods=state.mods.filter(m=>{if(state.filter==='enabled'&&!m.enabled)return false;if(state.filter==='disabled'&&m.enabled)return false;if(state.filter==='mods'&&m.folder!=='mods')return false;if(state.filter==='plugins'&&m.folder!=='plugins')return false;if(q&&!m.name.toLowerCase().includes(q)&&!(m.author||'').toLowerCase().includes(q))return false;return true;});
 const total=state.mods.length;const enabled=state.mods.filter(m=>m.enabled).length;const sz=state.mods.reduce((a,m)=>a+m.size,0);document.getElementById('statTotal').textContent=total;document.getElementById('statEnabled').textContent=enabled;document.getElementById('statDisabled').textContent=total-enabled;document.getElementById('statSize').textContent=fmtSize(sz);document.getElementById('statsBar').style.display=total>0?'flex':'none';document.getElementById('modHeader').style.display=total>0?'grid':'none';
-const el=document.getElementById('modList');if(!state.activeProfile){el.innerHTML=`<div class="empty-state"><div class="big-icon">◈</div><h3>No Profile Selected</h3><p>Choose a profile from the sidebar.</p></div>`;return;}
+const el=document.getElementById('modList');if(!state.activeProfile){el.innerHTML=`<div class="empty-state"><div class="big-icon">◈</div><h3>No Container Selected</h3><p>Choose a container from the sidebar.</p></div>`;return;}
 if(mods.length===0){el.innerHTML=`<div class="empty-state"><div class="big-icon">📦</div><h3>${total===0?'No Mods Installed':'No Results'}</h3><p>${total===0?'Click <strong>+ INSTALL MOD</strong> to get started.':'Adjust search or filter.'}</p></div>`;return;}
 const locked=isProfileLocked(state.activeProfile);el.innerHTML=mods.map(m=>`<div class="mod-row ${m.enabled?'':'disabled-mod'}"><div class="mod-toggle ${m.enabled?'on':''} ${locked?'locked':''}" title="${locked?'Container running':m.enabled?'Disable':'Enable'}" onclick="${locked?'':`toggleMod('${esc(m.name)}','${m.folder}',${!m.enabled})`}"></div><div class="mod-name-cell"><div class="mod-name">${esc(m.name)}</div>${m.description?`<div class="mod-desc">${esc(m.description)}</div>`:''}</div><div><span class="folder-badge ${m.folder}">${m.folder==='mods'?'MOD':'PLUGIN'}</span></div><div class="mod-meta">${m.version?'v'+esc(m.version):'—'}</div><div class="mod-meta">${m.author?esc(m.author):'—'}</div><div><span class="mod-status ${m.enabled?'on':'off'}">${m.enabled?'ON':'OFF'}</span></div><div class="mod-actions"><button class="icon-btn danger" title="Delete" onclick="confirmDelete('${esc(m.name)}','${m.folder}')" ${locked?'disabled':''}>🗑</button></div></div>`).join('');}
 
@@ -610,11 +609,11 @@ if((det.unknown||[]).length>0){html+=`<div style="font-family:\'Share Tech Mono\
 if(installs.length===0&&(det.unknown||[]).length===0){html+='<div style="color:var(--text-dim);font-size:12px">No installable content detected.</div>';}
 html+='</div>';el.innerHTML=html;if(installs.length>0)toast(`Installed ${installs.length} item(s) from ${d.filename}`,'success');}
 
-// ── Profiles ──
-function openAddProfile(){state.editingProfile=null;document.getElementById('profileModalTitle').textContent='Add Profile';document.getElementById('pName').value='';document.getElementById('pModsPath').value='';document.getElementById('pPluginsPath').value='';document.getElementById('pColor').value='#e8b84b';document.getElementById('profileDeleteSection').style.display='none';openModal('profileModal');}
-function openEditProfile(id){state.editingProfile=id;const p=state.profiles[id];document.getElementById('profileModalTitle').textContent='Edit Profile';document.getElementById('pName').value=p.label;document.getElementById('pModsPath').value=p.mods_path||'';document.getElementById('pPluginsPath').value=p.plugins_path||'';document.getElementById('pColor').value=p.color||'#e8b84b';document.getElementById('profileDeleteSection').style.display='block';openModal('profileModal');}
-async function saveProfile(){const label=document.getElementById('pName').value.trim();const mods_path=document.getElementById('pModsPath').value.trim();const plugins_path=document.getElementById('pPluginsPath').value.trim();const color=document.getElementById('pColor').value;if(!label){toast('Name is required','error');return;}try{const url=state.editingProfile?`${API}/api/config/profile/${state.editingProfile}`:`${API}/api/config/profile`;await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,mods_path,plugins_path,color})});await loadConfig();closeModal('profileModal');toast('Profile saved','success');}catch{toast('Save failed','error');}}
-async function deleteEditingProfile(){if(!state.editingProfile)return;const l=state.profiles[state.editingProfile]?.label||state.editingProfile;if(!confirm(`Delete profile "${l}"? Mod files on disk are not affected.`))return;try{await fetch(`${API}/api/config/profile/${state.editingProfile}`,{method:'DELETE'});if(state.activeProfile===state.editingProfile)state.activeProfile=null;closeModal('profileModal');await loadConfig();toast(`"${l}" deleted`,'success');}catch(e){toast(e.message||'Delete failed','error');}}
+// ── Containers ──
+function openAddProfile(){state.editingProfile=null;document.getElementById('profileModalTitle').textContent='Add Container';document.getElementById('pName').value='';document.getElementById('pModsPath').value='';document.getElementById('pPluginsPath').value='';document.getElementById('pColor').value='#e8b84b';document.getElementById('profileDeleteSection').style.display='none';openModal('profileModal');}
+function openEditProfile(id){state.editingProfile=id;const p=state.profiles[id];document.getElementById('profileModalTitle').textContent='Edit Container';document.getElementById('pName').value=p.label;document.getElementById('pModsPath').value=p.mods_path||'';document.getElementById('pPluginsPath').value=p.plugins_path||'';document.getElementById('pColor').value=p.color||'#e8b84b';document.getElementById('profileDeleteSection').style.display='block';openModal('profileModal');}
+async function saveProfile(){const label=document.getElementById('pName').value.trim();const mods_path=document.getElementById('pModsPath').value.trim();const plugins_path=document.getElementById('pPluginsPath').value.trim();const color=document.getElementById('pColor').value;if(!label){toast('Name is required','error');return;}try{const url=state.editingProfile?`${API}/api/config/profile/${state.editingProfile}`:`${API}/api/config/profile`;await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,mods_path,plugins_path,color})});await loadConfig();closeModal('profileModal');toast('Container saved','success');}catch{toast('Save failed','error');}}
+async function deleteEditingProfile(){if(!state.editingProfile)return;const l=state.profiles[state.editingProfile]?.label||state.editingProfile;if(!confirm(`Delete container "${l}"? Mod files on disk are not affected.`))return;try{await fetch(`${API}/api/config/profile/${state.editingProfile}`,{method:'DELETE'});if(state.activeProfile===state.editingProfile)state.activeProfile=null;closeModal('profileModal');await loadConfig();toast(`"${l}" deleted`,'success');}catch(e){toast(e.message||'Delete failed','error');}}
 
 // ── Logs ──
 let logState={collapsed:false,autoRefresh:true,pollTimer:null};
@@ -637,7 +636,7 @@ function switchView(v){state.currentView=v;document.getElementById('viewMods').s
 async function refreshPresets(){if(!state.activeProfile)return;try{const r=await fetch(`${API}/api/presets/${state.activeProfile}`);const d=await r.json();state.presets=d.presets||{};renderPresets();}catch{toast('Failed to load presets','error');}}
 function renderPresetsToolbar(){const p=state.profiles[state.activeProfile];if(!p){document.getElementById('presetsToolbarTitle').textContent='Presets';document.getElementById('presetsBadge').innerHTML='';document.getElementById('savePresetBtn').disabled=true;return;}document.getElementById('presetsToolbarTitle').textContent=p.label+' Presets';document.getElementById('presetsBadge').innerHTML=`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;document.getElementById('savePresetBtn').disabled=isProfileLocked(state.activeProfile);}
 function renderPresets(){const el=document.getElementById('presetsList');const ls=document.getElementById('presetsLockBannerSlot');const locked=state.activeProfile?isProfileLocked(state.activeProfile):false;if(locked&&state.activeProfile){const l=state.profiles[state.activeProfile]?.label||state.activeProfile;ls.innerHTML=`<div class="lock-banner"><span class="lock-banner-icon">🔒</span><span><strong>${esc(l)}</strong> container RUNNING — presets locked</span><button class="lock-banner-stop" onclick="containerAction('${esc(state.activeProfile)}','stop')">■ STOP</button></div>`;}else ls.innerHTML='';document.getElementById('savePresetBtn').disabled=!state.activeProfile||locked;
-if(!state.activeProfile){el.innerHTML='<div class="empty-state"><div class="big-icon">◫</div><h3>No Profile Selected</h3></div>';return;}const entries=Object.entries(state.presets);if(!entries.length){el.innerHTML='<div class="empty-state"><div class="big-icon">◫</div><h3>No Presets Yet</h3><p>Click <strong>+ SAVE CURRENT AS PRESET</strong> to snapshot your mods.</p></div>';return;}
+if(!state.activeProfile){el.innerHTML='<div class="empty-state"><div class="big-icon">◫</div><h3>No Container Selected</h3></div>';return;}const entries=Object.entries(state.presets);if(!entries.length){el.innerHTML='<div class="empty-state"><div class="big-icon">◫</div><h3>No Presets Yet</h3><p>Click <strong>+ SAVE CURRENT AS PRESET</strong> to snapshot your mods.</p></div>';return;}
 el.innerHTML=entries.map(([id,p])=>{const on=Object.entries(p.mods||{}).filter(([,v])=>v).map(([k])=>k);const off=Object.entries(p.mods||{}).filter(([,v])=>!v).map(([k])=>k);const d=p.updated||p.created;const ds=d?new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}):'—';return`<div class="preset-card"><div class="preset-card-header"><div class="preset-card-name">${esc(p.label)}</div><div class="preset-card-actions"><button class="btn btn-primary btn-sm" onclick="confirmLoadPreset('${esc(id)}')" ${locked?'disabled':''}>▶ LOAD</button><button class="btn btn-ghost btn-sm" onclick="updatePreset('${esc(id)}')" ${locked?'disabled':''}>↻ UPDATE</button><button class="icon-btn danger" onclick="confirmDeletePreset('${esc(id)}')">🗑</button></div></div><div class="preset-card-meta"><div class="preset-meta-item"><strong>${p.enabled_count||0}</strong> on / <strong>${p.mod_count||0}</strong> total</div><div class="preset-meta-item">Updated: <strong>${ds}</strong></div></div><div class="preset-mod-tags">${on.slice(0,12).map(m=>`<span class="preset-mod-tag on">${esc(m)}</span>`).join('')}${off.slice(0,6).map(m=>`<span class="preset-mod-tag off">${esc(m)}</span>`).join('')}${on.length+off.length>18?`<span class="preset-mod-tag off">+${on.length+off.length-18}</span>`:''}</div></div>`;}).join('');}
 
 function openSavePresetModal(){if(!state.activeProfile||isProfileLocked(state.activeProfile))return;document.getElementById('savePresetProfileLabel').textContent=state.profiles[state.activeProfile]?.label||'';document.getElementById('presetNameInput').value='';const prev=document.getElementById('savePresetPreview');prev.innerHTML=state.mods.length?state.mods.map(m=>`<div class="save-preset-preview-row"><div class="save-preset-preview-dot" style="background:${m.enabled?'var(--enabled)':'var(--disabled)'}"></div><span style="color:${m.enabled?'var(--text-primary)':'var(--text-dim)'}">${esc(m.name)}</span><span class="folder-badge ${m.folder}" style="margin-left:auto;font-size:8px">${m.folder==='mods'?'MOD':'PLG'}</span><span style="color:var(--text-dim);margin-left:4px">${m.enabled?'ON':'OFF'}</span></div>`).join(''):'<div style="color:var(--text-dim);font-size:12px;padding:8px 0">No mods to snapshot.</div>';openModal('savePresetModal');setTimeout(()=>document.getElementById('presetNameInput').focus(),100);}
