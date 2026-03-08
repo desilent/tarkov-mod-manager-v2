@@ -5,10 +5,11 @@ import tarfile
 import json
 import logging
 import socket
-import struct
+import asyncio
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +21,7 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Tarkov Mod Manager", version="1.0.0")
+app = FastAPI(title="Tarkov Mod Manager", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,6 +29,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Thread pool for blocking I/O (URL downloads, etc.)
+_executor = ThreadPoolExecutor(max_workers=2)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_DIR   = Path(os.environ.get("DATA_DIR", "/data"))
@@ -37,9 +41,10 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 # Each profile can be seeded from environment variables so Unraid's Docker UI
 # can set paths without touching any config file.
 #
-#   PROFILE_<ID>_LABEL  = display name   (e.g. "FIKA Server")
-#   PROFILE_<ID>_PATH   = mods directory (e.g. "/mods/fika-server")
-#   PROFILE_<ID>_COLOR  = hex colour     (e.g. "#e8b84b")
+#   PROFILE_<ID>_LABEL      = display name   (e.g. "FIKA Server")
+#   PROFILE_<ID>_PATH       = mods directory  (e.g. "/mods/fika-server")
+#   PROFILE_<ID>_COLOR      = hex colour      (e.g. "#e8b84b")
+#   PROFILE_<ID>_CONTAINER  = Docker container (e.g. "spt-fika-server")
 #
 # Built-in IDs: FIKA_SERVER, FIKA_HEADLESS, SPT_CLIENT
 # You can add arbitrary ones: PROFILE_MY_MOD_LABEL=... etc.
@@ -105,11 +110,26 @@ def save_config(cfg: dict):
 # Links a profile to a Docker container name via env var:
 #   PROFILE_FIKA_SERVER_CONTAINER=spt-fika-server
 #   PROFILE_FIKA_HEADLESS_CONTAINER=SPT
-CONTAINER_MAP = {
-    "fika-server":   os.environ.get("PROFILE_FIKA_SERVER_CONTAINER",   ""),
-    "fika-headless": os.environ.get("PROFILE_FIKA_HEADLESS_CONTAINER", ""),
-    "spt-client":    os.environ.get("PROFILE_SPT_CLIENT_CONTAINER",    ""),
-}
+
+def _build_container_map() -> dict:
+    """Build container map from env vars — includes built-ins AND extra profiles."""
+    cmap = {
+        "fika-server":   os.environ.get("PROFILE_FIKA_SERVER_CONTAINER",   ""),
+        "fika-headless": os.environ.get("PROFILE_FIKA_HEADLESS_CONTAINER", ""),
+        "spt-client":    os.environ.get("PROFILE_SPT_CLIENT_CONTAINER",    ""),
+    }
+    # Pick up extra profiles' container vars too
+    builtins = {"FIKA_SERVER", "FIKA_HEADLESS", "SPT_CLIENT"}
+    for key, val in os.environ.items():
+        if key.startswith("PROFILE_") and key.endswith("_CONTAINER"):
+            raw_id = key[len("PROFILE_"):-len("_CONTAINER")]
+            if raw_id in builtins:
+                continue
+            pid = raw_id.lower().replace("_", "-")
+            cmap[pid] = val
+    return cmap
+
+CONTAINER_MAP = _build_container_map()
 
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
 
@@ -282,16 +302,56 @@ def get_size(path: Path) -> int:
     return total
 
 def extract_archive(archive_path: Path, dest: Path):
-    dest.mkdir(parents=True, exist_ok=True)
-    if zipfile.is_zipfile(archive_path):
-        with zipfile.ZipFile(archive_path, "r") as z:
-            z.extractall(dest)
-    elif tarfile.is_tarfile(archive_path):
-        with tarfile.open(archive_path, "r:*") as t:
-            t.extractall(dest)
-    else:
-        # Just move it as-is
-        shutil.move(str(archive_path), str(dest / archive_path.name))
+    """Extract archive with normalization: if the archive contains a single
+    top-level directory, extract it directly. If it's flat files, wrap them
+    in a folder named after the archive."""
+    staging = dest / "__staging__"
+    staging.mkdir(parents=True, exist_ok=True)
+
+    try:
+        if zipfile.is_zipfile(archive_path):
+            with zipfile.ZipFile(archive_path, "r") as z:
+                z.extractall(staging)
+        elif tarfile.is_tarfile(archive_path):
+            with tarfile.open(archive_path, "r:*") as t:
+                t.extractall(staging)
+        else:
+            # Not an archive — just move as-is
+            shutil.move(str(archive_path), str(dest / archive_path.name))
+            shutil.rmtree(staging, ignore_errors=True)
+            return
+
+        # Normalize: check what we got in staging
+        top_items = [i for i in staging.iterdir() if not i.name.startswith(".") and i.name != "__MACOSX"]
+
+        if len(top_items) == 1 and top_items[0].is_dir():
+            # Single top-level folder — move it directly into dest
+            single = top_items[0]
+            final = dest / single.name
+            if final.exists():
+                shutil.rmtree(final)
+            shutil.move(str(single), str(final))
+        elif len(top_items) > 0:
+            # Multiple items / flat files — wrap in a folder named after archive
+            wrapper_name = archive_path.stem
+            # Strip common double extensions like .tar
+            if wrapper_name.endswith(".tar"):
+                wrapper_name = wrapper_name[:-4]
+            final = dest / wrapper_name
+            if final.exists():
+                shutil.rmtree(final)
+            final.mkdir(parents=True, exist_ok=True)
+            for item in staging.iterdir():
+                if item.name == "__MACOSX":
+                    continue
+                shutil.move(str(item), str(final / item.name))
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+
+def _sync_download(url: str, dest: Path):
+    """Blocking URL download — run in executor."""
+    import urllib.request
+    urllib.request.urlretrieve(url, dest)
 
 # ── API Routes ────────────────────────────────────────────────────────────────
 
@@ -393,12 +453,14 @@ async def upload_mod(profile: str, file: UploadFile = File(...)):
 async def install_from_url(req: InstallUrlRequest):
     if is_container_running(req.profile):
         raise HTTPException(status_code=409, detail="Container is running — stop it before installing mods")
-    import urllib.request
     mod_dir = get_mod_dir(req.profile)
     filename = req.url.split("/")[-1].split("?")[0] or "mod_download"
     tmp = mod_dir / f"__tmp_{filename}"
     try:
-        urllib.request.urlretrieve(req.url, tmp)
+        # Run blocking download in thread pool to avoid stalling the event loop
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(_executor, _sync_download, req.url, tmp)
+
         suffix = Path(filename).suffix.lower()
         if suffix in (".zip", ".tar", ".gz", ".tgz"):
             extract_archive(tmp, mod_dir)
@@ -452,7 +514,7 @@ def start_container(profile: str):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "1.0.0", "data_dir": str(DATA_DIR)}
+    return {"status": "ok", "version": "2.0.0", "data_dir": str(DATA_DIR)}
 
 # ── Static / Frontend ─────────────────────────────────────────────────────────
 static_dir = Path(__file__).parent.parent / "static"
