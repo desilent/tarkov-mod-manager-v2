@@ -73,6 +73,8 @@ Open: **http://YOUR_UNRAID_IP:7272**
 | `PROFILE_SPT_CLIENT_LABEL` | `SPT Client` | UI display name |
 | `PROFILE_SPT_CLIENT_PATH` | `/mods/spt-client` | Internal path |
 | `PROFILE_SPT_CLIENT_COLOR` | `#e84b4b` | Accent colour |
+| `AUTH_PASSWORD` | *(empty)* | Set to require login; leave empty to disable |
+| `AUTH_SESSION_HOURS` | `72` | Session duration before re-login required |
 
 **Adding extra profiles:** any `PROFILE_<ID>_PATH` var without a matching built-in
 creates a new profile automatically. Add `_LABEL` and `_COLOR` to customise it.
@@ -97,6 +99,35 @@ python app/main.py   # → http://localhost:7272
 
 Disabling a mod moves it to a `__disabled__` subfolder. Re-enabling moves it back.
 No files are ever deleted by toggling.
+
+---
+
+## 🔐 Authentication (for remote access)
+
+If you expose the manager over the internet via a reverse proxy (Traefik, nginx, etc.), set a login password:
+
+```yaml
+AUTH_PASSWORD: "your-secret-password"
+```
+
+- When set, the app shows a themed login screen before allowing access
+- Sessions last 72 hours by default (configurable via `AUTH_SESSION_HOURS`)
+- Sessions are stored in memory — restarting the container invalidates all sessions
+- If `AUTH_PASSWORD` is empty or unset, authentication is disabled entirely (good for LAN-only use)
+- A logout button appears in the sidebar when auth is active
+
+---
+
+## 🎯 Mod Presets
+
+Save and load named mod configurations. Useful when switching between solo and co-op play:
+
+1. Set up your mods the way you want → click **Save Current as Preset** → give it a name
+2. Later, switch to a different mod setup → save that as another preset
+3. Click **Load** on any preset to restore that exact configuration
+
+**Strict mode:** Loading a preset disables any mod not listed in the preset. This ensures a clean, predictable mod set (important for FIKA where mismatched mods cause desync).
+No files are ever deleted — disabled mods are moved to `__disabled__/` and can be re-enabled.
 
 ---
 

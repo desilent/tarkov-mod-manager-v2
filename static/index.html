@@ -1155,6 +1155,149 @@
     flex-shrink: 0;
   }
 
+  /* ── LOGIN SCREEN ── */
+  .login-overlay {
+    position: fixed;
+    inset: 0;
+    background: var(--bg-base);
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+  }
+
+  .login-overlay.hidden { display: none; }
+
+  .login-box {
+    width: 360px;
+    max-width: calc(100vw - 40px);
+    text-align: center;
+  }
+
+  .login-logo {
+    margin-bottom: 28px;
+  }
+  .login-logo svg { width: 48px; height: 48px; margin-bottom: 12px; }
+  .login-logo-text {
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 22px;
+    letter-spacing: 4px;
+    color: var(--accent-gold);
+    text-transform: uppercase;
+  }
+  .login-logo-sub {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 2px;
+    margin-top: 4px;
+  }
+
+  .login-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border-bright);
+    border-radius: 4px;
+    padding: 28px 24px;
+    position: relative;
+  }
+
+  .login-card::before, .login-card::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    border-color: var(--accent-gold);
+    border-style: solid;
+    opacity: 0.4;
+  }
+  .login-card::before { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+  .login-card::after  { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+  .login-title {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    margin-bottom: 18px;
+  }
+
+  .login-input {
+    width: 100%;
+    background: var(--bg-card);
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    padding: 11px 14px;
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+    margin-bottom: 14px;
+    text-align: center;
+    letter-spacing: 2px;
+  }
+  .login-input:focus { border-color: var(--accent-gold); }
+  .login-input::placeholder { color: var(--text-dim); letter-spacing: 1px; }
+
+  .login-btn {
+    width: 100%;
+    padding: 10px;
+    background: var(--accent-gold-dim);
+    border: 1px solid var(--accent-gold);
+    border-radius: 2px;
+    color: var(--accent-gold);
+    font-family: 'Rajdhani', sans-serif;
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .login-btn:hover {
+    background: rgba(232,184,75,0.25);
+    box-shadow: 0 0 16px rgba(232,184,75,0.2);
+  }
+  .login-btn:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+  .login-error {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--accent-red);
+    margin-top: 12px;
+    min-height: 16px;
+  }
+
+  .login-scanlines {
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scan-line) 2px, var(--scan-line) 4px);
+    pointer-events: none;
+    opacity: 0.35;
+  }
+
+  /* Logout button */
+  .logout-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 5px 0;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    transition: color 0.15s;
+  }
+  .logout-btn:hover { color: var(--accent-red); }
+
   /* ── RESPONSIVE ── */
   @media (max-width: 768px) {
     .hamburger { display: flex; }
@@ -1206,6 +1349,32 @@
 </style>
 </head>
 <body>
+
+<!-- LOGIN SCREEN (hidden until auth check) -->
+<div class="login-overlay hidden" id="loginOverlay">
+  <div class="login-scanlines"></div>
+  <div class="login-box">
+    <div class="login-logo">
+      <svg viewBox="0 0 32 32" fill="none">
+        <polygon points="16,2 28,10 28,22 16,30 4,22 4,10" stroke="#e8b84b" stroke-width="1.5" fill="none" opacity="0.6"/>
+        <polygon points="16,7 23,12 23,20 16,25 9,20 9,12" fill="#e8b84b" opacity="0.15"/>
+        <line x1="16" y1="2" x2="16" y2="30" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <line x1="4" y1="10" x2="28" y2="22" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <line x1="28" y1="10" x2="4" y2="22" stroke="#e8b84b" stroke-width="0.5" opacity="0.3"/>
+        <circle cx="16" cy="16" r="3" fill="#e8b84b"/>
+      </svg>
+      <div class="login-logo-text">Raid Mod Manager</div>
+      <div class="login-logo-sub">AUTHENTICATION REQUIRED</div>
+    </div>
+    <div class="login-card">
+      <div class="login-title">Enter Access Password</div>
+      <input type="password" class="login-input" id="loginPassword" placeholder="••••••••"
+        onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">AUTHENTICATE</button>
+      <div class="login-error" id="loginError"></div>
+    </div>
+  </div>
+</div>
 
 <!-- HEADER -->
 <header>
@@ -1263,6 +1432,9 @@
         VER: 2.0.0<br>
         API: <span id="apiVer">—</span>
       </div>
+      <button class="logout-btn" id="logoutBtn" style="display:none" onclick="doLogout()">
+        ⏻ LOGOUT
+      </button>
     </div>
   </aside>
 
@@ -1533,10 +1705,104 @@ const API = '';  // same origin
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
   startClock();
+
+  // Check auth before loading anything else
+  const authed = await checkAuth();
+  if (!authed) return; // login screen shown, wait for login
+
+  await bootApp();
+}
+
+async function checkAuth() {
+  try {
+    const r = await fetch(`${API}/api/auth/check`);
+    const d = await r.json();
+    if (!d.auth_enabled) {
+      // Auth disabled — go straight in
+      document.getElementById('loginOverlay').classList.add('hidden');
+      return true;
+    }
+    if (d.authenticated) {
+      // Valid session
+      document.getElementById('loginOverlay').classList.add('hidden');
+      document.getElementById('logoutBtn').style.display = '';
+      return true;
+    }
+    // Need to login
+    document.getElementById('loginOverlay').classList.remove('hidden');
+    setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+    return false;
+  } catch {
+    // Can't reach API — show app anyway (will show OFFLINE status)
+    document.getElementById('loginOverlay').classList.add('hidden');
+    return true;
+  }
+}
+
+async function bootApp() {
   await checkHealth();
   await loadConfig();
   startContainerPolling();
 }
+
+async function doLogin() {
+  const pw = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  const err = document.getElementById('loginError');
+  if (!pw) { err.textContent = 'ENTER PASSWORD'; return; }
+
+  btn.disabled = true;
+  err.textContent = '';
+  try {
+    const r = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ password: pw })
+    });
+    if (!r.ok) {
+      const d = await r.json();
+      err.textContent = (d.detail || 'AUTHENTICATION FAILED').toUpperCase();
+      document.getElementById('loginPassword').value = '';
+      document.getElementById('loginPassword').focus();
+      return;
+    }
+    // Success
+    document.getElementById('loginOverlay').classList.add('hidden');
+    document.getElementById('logoutBtn').style.display = '';
+    document.getElementById('loginPassword').value = '';
+    await bootApp();
+  } catch(e) {
+    err.textContent = 'CONNECTION FAILED';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch(`${API}/api/auth/logout`, { method: 'POST' });
+  } catch { /* ignore */ }
+  // Show login screen
+  document.getElementById('loginOverlay').classList.remove('hidden');
+  document.getElementById('logoutBtn').style.display = 'none';
+  setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+}
+
+// Global 401 handler — if any API call returns 401, show login
+const _origFetch = window.fetch;
+window.fetch = async function(...args) {
+  const r = await _origFetch.apply(this, args);
+  if (r.status === 401) {
+    const url = typeof args[0] === 'string' ? args[0] : args[0]?.url || '';
+    // Don't loop on auth endpoints
+    if (!url.includes('/api/auth/')) {
+      document.getElementById('loginOverlay').classList.remove('hidden');
+      document.getElementById('logoutBtn').style.display = 'none';
+      setTimeout(() => document.getElementById('loginPassword').focus(), 100);
+    }
+  }
+  return r;
+};
 
 function startClock() {
   const el = document.getElementById('clockEl');

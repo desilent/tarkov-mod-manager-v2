@@ -177,4 +177,27 @@
     Required="false"
     Mask="false">/data</Config>
 
+  <!-- Auth -->
+  <Config
+    Name="Login Password"
+    Target="AUTH_PASSWORD"
+    Default=""
+    Mode=""
+    Description="Set a password to require login when accessing over the internet. Leave empty to disable authentication (recommended for LAN-only use)."
+    Type="Variable"
+    Display="always"
+    Required="false"
+    Mask="true"></Config>
+
+  <Config
+    Name="Session Duration (hours)"
+    Target="AUTH_SESSION_HOURS"
+    Default="72"
+    Mode=""
+    Description="How long a login session lasts before requiring re-authentication. Default: 72 hours (3 days)."
+    Type="Variable"
+    Display="advanced"
+    Required="false"
+    Mask="false">72</Config>
+
 </Container>

@@ -6,15 +6,18 @@ import json
 import logging
 import socket
 import asyncio
+import secrets
+import hashlib
 from pathlib import Path
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Response, Cookie
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import uvicorn
 
@@ -32,6 +35,70 @@ app.add_middleware(
 
 # Thread pool for blocking I/O (URL downloads, etc.)
 _executor = ThreadPoolExecutor(max_workers=2)
+
+# ── Auth ──────────────────────────────────────────────────────────────────────
+AUTH_PASSWORD = os.environ.get("AUTH_PASSWORD", "").strip()
+AUTH_SESSION_HOURS = int(os.environ.get("AUTH_SESSION_HOURS", "72"))
+AUTH_ENABLED = bool(AUTH_PASSWORD)
+
+# In-memory session store: { token: expiry_datetime }
+_sessions: dict[str, datetime] = {}
+
+def _create_session() -> tuple[str, datetime]:
+    token = secrets.token_urlsafe(32)
+    expiry = datetime.now() + timedelta(hours=AUTH_SESSION_HOURS)
+    _sessions[token] = expiry
+    # Prune expired sessions
+    now = datetime.now()
+    expired = [t for t, exp in _sessions.items() if exp < now]
+    for t in expired:
+        del _sessions[t]
+    return token, expiry
+
+def _validate_session(token: str | None) -> bool:
+    if not token:
+        return False
+    expiry = _sessions.get(token)
+    if not expiry:
+        return False
+    if datetime.now() > expiry:
+        del _sessions[token]
+        return False
+    return True
+
+def _check_password(password: str) -> bool:
+    # Constant-time comparison
+    return secrets.compare_digest(password, AUTH_PASSWORD)
+
+# Auth paths that don't require a session
+_AUTH_EXEMPT = {"/api/auth/check", "/api/auth/login", "/api/health"}
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        if not AUTH_ENABLED:
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Exempt: non-API paths (frontend static files, root page)
+        if not path.startswith("/api/"):
+            return await call_next(request)
+
+        # Exempt: auth endpoints + health
+        if path in _AUTH_EXEMPT:
+            return await call_next(request)
+
+        # Check session cookie
+        token = request.cookies.get("rmm_session")
+        if not _validate_session(token):
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Not authenticated"}
+            )
+
+        return await call_next(request)
+
+app.add_middleware(AuthMiddleware)
 
 # ── Config ────────────────────────────────────────────────────────────────────
 DATA_DIR   = Path(os.environ.get("DATA_DIR", "/data"))
@@ -231,6 +298,9 @@ class PresetSaveRequest(BaseModel):
 
 class PresetLoadRequest(BaseModel):
     pass  # no body needed, profile + preset_id in URL
+
+class AuthLoginRequest(BaseModel):
+    password: str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def get_mod_dir(profile_id: str) -> Path:
@@ -658,6 +728,44 @@ def start_container(profile: str):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# ── Auth Routes ───────────────────────────────────────────────────────────────
+
+@app.get("/api/auth/check")
+def auth_check(request: Request):
+    """Check if auth is enabled and if current session is valid."""
+    if not AUTH_ENABLED:
+        return {"auth_enabled": False, "authenticated": True}
+    token = request.cookies.get("rmm_session")
+    valid = _validate_session(token)
+    return {"auth_enabled": True, "authenticated": valid}
+
+@app.post("/api/auth/login")
+def auth_login(req: AuthLoginRequest, response: Response):
+    if not AUTH_ENABLED:
+        return {"ok": True, "message": "Auth not enabled"}
+    if not _check_password(req.password):
+        raise HTTPException(status_code=401, detail="Invalid password")
+    token, expiry = _create_session()
+    response.set_cookie(
+        key="rmm_session",
+        value=token,
+        httponly=True,
+        samesite="lax",
+        secure=False,  # Set True if behind HTTPS; Traefik handles TLS termination
+        max_age=AUTH_SESSION_HOURS * 3600,
+        path="/",
+    )
+    logger.info("Auth: new session created")
+    return {"ok": True}
+
+@app.post("/api/auth/logout")
+def auth_logout(request: Request, response: Response):
+    token = request.cookies.get("rmm_session")
+    if token and token in _sessions:
+        del _sessions[token]
+    response.delete_cookie("rmm_session", path="/")
+    return {"ok": True}
 
 @app.get("/api/health")
 def health():
