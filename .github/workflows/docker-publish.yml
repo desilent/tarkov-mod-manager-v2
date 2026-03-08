@@ -10,7 +10,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  # Change YOUR_GITHUB_USERNAME to your actual GitHub username
+  # Change desilent to your actual GitHub username
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:

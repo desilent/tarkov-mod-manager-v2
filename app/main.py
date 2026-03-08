@@ -4,6 +4,8 @@ import zipfile
 import tarfile
 import json
 import logging
+import socket
+import struct
 from pathlib import Path
 from typing import Optional
 from datetime import datetime
@@ -98,6 +100,96 @@ def load_config() -> dict:
 def save_config(cfg: dict):
     with open(CONFIG_FILE, "w") as f:
         json.dump(cfg, f, indent=2)
+
+# ── Docker Socket ─────────────────────────────────────────────────────────────
+# Links a profile to a Docker container name via env var:
+#   PROFILE_FIKA_SERVER_CONTAINER=spt-fika-server
+#   PROFILE_FIKA_HEADLESS_CONTAINER=SPT
+CONTAINER_MAP = {
+    "fika-server":   os.environ.get("PROFILE_FIKA_SERVER_CONTAINER",   ""),
+    "fika-headless": os.environ.get("PROFILE_FIKA_HEADLESS_CONTAINER", ""),
+    "spt-client":    os.environ.get("PROFILE_SPT_CLIENT_CONTAINER",    ""),
+}
+
+DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
+
+def _docker_request(method: str, path: str, body: dict | None = None) -> dict:
+    """Make a raw HTTP request to the Docker Unix socket."""
+    sock_path = DOCKER_SOCKET
+    if not os.path.exists(sock_path):
+        raise HTTPException(status_code=503, detail="Docker socket not available. Mount /var/run/docker.sock into the container.")
+
+    payload = ""
+    if body is not None:
+        payload = json.dumps(body)
+
+    headers = (
+        f"{method} {path} HTTP/1.0\r\n"
+        f"Host: localhost\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Content-Length: {len(payload)}\r\n"
+        f"\r\n"
+        f"{payload}"
+    )
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.connect(sock_path)
+        s.sendall(headers.encode())
+        response = b""
+        while True:
+            chunk = s.recv(4096)
+            if not chunk:
+                break
+            response += chunk
+
+    raw = response.decode(errors="replace")
+    # Split headers from body
+    if "\r\n\r\n" in raw:
+        _, body_raw = raw.split("\r\n\r\n", 1)
+    else:
+        body_raw = raw
+
+    # Strip chunked encoding if present
+    try:
+        return json.loads(body_raw)
+    except Exception:
+        # Try stripping first chunk size line
+        lines = body_raw.strip().splitlines()
+        if lines:
+            try:
+                return json.loads("\n".join(lines[1:]))
+            except Exception:
+                pass
+        return {}
+
+def get_container_status(container_name: str) -> dict:
+    """Return container running state. Returns {name, state, status, available}."""
+    if not container_name:
+        return {"name": None, "state": "unknown", "status": "not configured", "available": False}
+    try:
+        data = _docker_request("GET", f"/containers/{container_name}/json")
+        if isinstance(data, dict) and "State" in data:
+            state = data["State"]
+            return {
+                "name": container_name,
+                "state": "running" if state.get("Running") else "stopped",
+                "status": state.get("Status", "unknown"),
+                "available": True,
+            }
+        return {"name": container_name, "state": "unknown", "status": "not found", "available": False}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Docker status check failed for {container_name}: {e}")
+        return {"name": container_name, "state": "unknown", "status": str(e), "available": False}
+
+def is_container_running(profile_id: str) -> bool:
+    """Returns True if the container linked to this profile is currently running."""
+    container = CONTAINER_MAP.get(profile_id, "")
+    if not container:
+        return False
+    info = get_container_status(container)
+    return info.get("state") == "running"
 
 # ── Models ────────────────────────────────────────────────────────────────────
 class ModToggleRequest(BaseModel):
@@ -239,6 +331,8 @@ def list_mods(profile: str):
 
 @app.post("/api/mods/toggle")
 def toggle_mod(req: ModToggleRequest):
+    if is_container_running(req.profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before changing mods")
     mod_dir = get_mod_dir(req.profile)
     disabled_dir = mod_dir / "__disabled__"
     disabled_dir.mkdir(exist_ok=True)
@@ -259,6 +353,8 @@ def toggle_mod(req: ModToggleRequest):
 
 @app.delete("/api/mods/{profile}/{mod_name}")
 def delete_mod(profile: str, mod_name: str):
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before deleting mods")
     mod_dir = get_mod_dir(profile)
     for candidate in [mod_dir / mod_name, mod_dir / "__disabled__" / mod_name]:
         if candidate.exists():
@@ -271,6 +367,8 @@ def delete_mod(profile: str, mod_name: str):
 
 @app.post("/api/mods/{profile}/upload")
 async def upload_mod(profile: str, file: UploadFile = File(...)):
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before installing mods")
     mod_dir = get_mod_dir(profile)
     tmp = mod_dir / f"__tmp_{file.filename}"
     try:
@@ -293,6 +391,8 @@ async def upload_mod(profile: str, file: UploadFile = File(...)):
 
 @app.post("/api/mods/install-url")
 async def install_from_url(req: InstallUrlRequest):
+    if is_container_running(req.profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before installing mods")
     import urllib.request
     mod_dir = get_mod_dir(req.profile)
     filename = req.url.split("/")[-1].split("?")[0] or "mod_download"
@@ -309,6 +409,45 @@ async def install_from_url(req: InstallUrlRequest):
         return {"ok": True, "message": f"Installed from URL: {filename}"}
     except Exception as e:
         tmp.unlink(missing_ok=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/containers")
+def list_container_statuses():
+    """Return Docker status for all profiles that have a container configured."""
+    result = {}
+    for profile_id, container_name in CONTAINER_MAP.items():
+        result[profile_id] = get_container_status(container_name)
+    return result
+
+@app.get("/api/containers/{profile}")
+def container_status(profile: str):
+    container = CONTAINER_MAP.get(profile, "")
+    return get_container_status(container)
+
+@app.post("/api/containers/{profile}/stop")
+def stop_container(profile: str):
+    container = CONTAINER_MAP.get(profile, "")
+    if not container:
+        raise HTTPException(status_code=400, detail="No container configured for this profile")
+    try:
+        _docker_request("POST", f"/containers/{container}/stop")
+        return {"ok": True, "action": "stop", "container": container}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/containers/{profile}/start")
+def start_container(profile: str):
+    container = CONTAINER_MAP.get(profile, "")
+    if not container:
+        raise HTTPException(status_code=400, detail="No container configured for this profile")
+    try:
+        _docker_request("POST", f"/containers/{container}/start")
+        return {"ok": True, "action": "start", "container": container}
+    except HTTPException:
+        raise
+    except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/health")

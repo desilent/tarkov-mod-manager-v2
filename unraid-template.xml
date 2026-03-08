@@ -9,7 +9,7 @@
 <Container version="2">
 
   <Name>raid-mod-manager</Name>
-  <Repository>ghcr.io/desilent/raid-mod-manager:latest</Repository>
+  <Repository>ghcr.io/desilent/tarkov-mod-manager-v2:latest</Repository>
   <Registry>https://ghcr.io</Registry>
   <Network>bridge</Network>
   <Shell>bash</Shell>
@@ -23,7 +23,7 @@
   <Category>Tools:</Category>
   <WebUI>http://[IP]:[PORT:7272]/</WebUI>
   <TemplateURL/>
-  <Icon>https://raw.githubusercontent.com/YOUR_GITHUB_USERNAME/raid-mod-manager/main/docs/icon.png</Icon>
+  <Icon>https://raw.githubusercontent.com/desilent/tarkov-mod-manager-v2/main/docs/icon.png</Icon>
   <ExtraParams>--restart=unless-stopped</ExtraParams>
   <DateInstalled/>
 

@@ -827,6 +827,124 @@
     color: var(--text-dim);
     margin-top: 4px;
   }
+
+  /* ── CONTAINER STATUS BAR ── */
+  .container-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 24px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+    min-height: 38px;
+  }
+
+  .container-bar-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-right: 4px;
+  }
+
+  .container-pill {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+  }
+
+  .container-pill.running {
+    border-color: rgba(61,232,122,0.4);
+    color: var(--enabled);
+    background: var(--enabled-dim);
+  }
+
+  .container-pill.stopped {
+    border-color: rgba(232,90,61,0.3);
+    color: var(--disabled);
+    background: var(--disabled-dim);
+  }
+
+  .container-pill.unknown {
+    border-color: var(--border);
+    color: var(--text-dim);
+  }
+
+  .container-pill-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+
+  .container-pill.running .container-pill-dot {
+    box-shadow: 0 0 5px var(--enabled);
+    animation: pulse 2s infinite;
+  }
+
+  .container-pill-btn {
+    margin-left: 4px;
+    padding: 0 6px;
+    height: 16px;
+    background: none;
+    border: 1px solid currentColor;
+    border-radius: 2px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    color: inherit;
+    opacity: 0.8;
+    transition: opacity 0.15s;
+    line-height: 1;
+  }
+  .container-pill-btn:hover { opacity: 1; }
+  .container-pill-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+
+  /* Lock banner shown in mod area when container is running */
+  .lock-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: rgba(232,90,61,0.08);
+    border: 1px solid rgba(232,90,61,0.3);
+    border-radius: 3px;
+    margin-bottom: 16px;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: var(--disabled);
+    letter-spacing: 0.5px;
+  }
+
+  .lock-banner-icon { font-size: 16px; flex-shrink: 0; }
+
+  .lock-banner-stop {
+    margin-left: auto;
+    padding: 4px 12px;
+    background: var(--disabled-dim);
+    border: 1px solid var(--disabled);
+    border-radius: 2px;
+    cursor: pointer;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    color: var(--disabled);
+    letter-spacing: 1px;
+    transition: all 0.15s;
+    flex-shrink: 0;
+  }
+  .lock-banner-stop:hover { background: rgba(232,90,61,0.2); }
+  .lock-banner-stop:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -895,6 +1013,15 @@
       <button class="btn btn-ghost" onclick="refreshMods()">↻ REFRESH</button>
       <button class="btn btn-primary" onclick="openInstallModal()" id="installBtn" disabled>＋ INSTALL MOD</button>
     </div>
+
+    <!-- Container status bar -->
+    <div class="container-bar" id="containerBar" style="display:none">
+      <span class="container-bar-label">CONTAINERS</span>
+      <div id="containerPills"></div>
+    </div>
+
+    <!-- Lock banner (shown when active profile container is running) -->
+    <!-- injected dynamically inside mod-list-container -->
 
     <!-- Mod list -->
     <div class="mod-list-container">
@@ -1041,6 +1168,8 @@ let state = {
   pendingDelete: null,
   activeTab: 'upload',
   selectedFile: null,
+  containers: {},        // { profileId: { state, status, name, available } }
+  containerPollTimer: null,
 };
 
 const API = '';  // same origin
@@ -1050,6 +1179,7 @@ async function init() {
   startClock();
   await checkHealth();
   await loadConfig();
+  startContainerPolling();
 }
 
 function startClock() {
@@ -1059,6 +1189,101 @@ function startClock() {
     setTimeout(tick, 1000);
   }
   tick();
+}
+
+// ── Container polling ──────────────────────────────────────────────────────
+function startContainerPolling() {
+  fetchContainerStatuses();
+  state.containerPollTimer = setInterval(fetchContainerStatuses, 5000);
+}
+
+async function fetchContainerStatuses() {
+  try {
+    const r = await fetch(`${API}/api/containers`);
+    if (!r.ok) return;
+    state.containers = await r.json();
+    renderContainerBar();
+    renderLockBanner();
+  } catch { /* silently ignore — docker socket may not be mounted */ }
+}
+
+function isProfileLocked(profileId) {
+  const c = state.containers[profileId];
+  return c && c.available && c.state === 'running';
+}
+
+function renderContainerBar() {
+  // Only show if at least one container is configured
+  const configured = Object.values(state.containers).filter(c => c.name);
+  const bar = document.getElementById('containerBar');
+  if (configured.length === 0) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+
+  const pills = document.getElementById('containerPills');
+  pills.innerHTML = Object.entries(state.containers).map(([pid, c]) => {
+    if (!c.name) return '';
+    const p = state.profiles[pid];
+    const label = p ? p.label : pid;
+    const stateClass = c.available ? c.state : 'unknown';
+    const stateLabel = c.available ? c.state.toUpperCase() : 'N/A';
+    const isRunning = c.state === 'running' && c.available;
+    const btnLabel = isRunning ? 'STOP' : 'START';
+    const btnDisabled = !c.available ? 'disabled' : '';
+    return `
+      <div class="container-pill ${stateClass}" title="${c.name}">
+        <div class="container-pill-dot"></div>
+        ${label}: ${stateLabel}
+        <button class="container-pill-btn" ${btnDisabled}
+          onclick="containerAction('${pid}','${isRunning ? 'stop' : 'start'}')"
+        >${btnLabel}</button>
+      </div>`;
+  }).join('');
+}
+
+function renderLockBanner() {
+  const el = document.getElementById('lockBanner');
+  if (!state.activeProfile) { if(el) el.remove(); return; }
+  const locked = isProfileLocked(state.activeProfile);
+  const container = state.containers[state.activeProfile];
+
+  // Update install button
+  const installBtn = document.getElementById('installBtn');
+  if (installBtn) installBtn.disabled = !state.activeProfile || locked;
+
+  const existing = document.getElementById('lockBanner');
+  if (!locked) { if (existing) existing.remove(); return; }
+  if (existing) return; // already shown
+
+  const banner = document.createElement('div');
+  banner.id = 'lockBanner';
+  banner.className = 'lock-banner';
+  banner.innerHTML = `
+    <span class="lock-banner-icon">🔒</span>
+    <span><strong>${state.profiles[state.activeProfile]?.label || state.activeProfile}</strong> container is RUNNING — mod changes are locked</span>
+    <button class="lock-banner-stop" onclick="containerAction('${state.activeProfile}','stop')">■ STOP CONTAINER</button>
+  `;
+  const modList = document.getElementById('modList');
+  modList.parentElement.insertBefore(banner, modList.parentElement.firstChild);
+}
+
+async function containerAction(profileId, action) {
+  const c = state.containers[profileId];
+  const label = state.profiles[profileId]?.label || profileId;
+  const verb = action === 'stop' ? 'Stopping' : 'Starting';
+  toast(`${verb} ${label}...`, 'info');
+  try {
+    const r = await fetch(`${API}/api/containers/${profileId}/${action}`, { method: 'POST' });
+    if (!r.ok) {
+      const d = await r.json();
+      throw new Error(d.detail || `${action} failed`);
+    }
+    toast(`${label} ${action === 'stop' ? 'stopped' : 'started'}`, 'success');
+    // Poll immediately for fresh status
+    setTimeout(fetchContainerStatuses, 800);
+    setTimeout(fetchContainerStatuses, 2500);
+  } catch(e) {
+    toast(e.message || `${action} failed`, 'error');
+  }
 }
 
 async function checkHealth() {
@@ -1114,10 +1339,14 @@ function renderSidebar() {
 async function selectProfile(id) {
   state.activeProfile = id;
   state.mods = [];
-  document.getElementById('installBtn').disabled = false;
+  // remove stale lock banner
+  const b = document.getElementById('lockBanner');
+  if (b) b.remove();
+  document.getElementById('installBtn').disabled = isProfileLocked(id);
   renderSidebar();
   renderToolbar();
   renderMods();
+  renderLockBanner();
   await refreshMods();
 }
 
@@ -1180,9 +1409,13 @@ function renderMods() {
     return;
   }
 
+  const locked = isProfileLocked(state.activeProfile);
   el.innerHTML = mods.map(m => `
     <div class="mod-row ${m.enabled?'':'disabled-mod'}" data-mod="${esc(m.name)}">
-      <div class="mod-toggle ${m.enabled?'on':''}" title="${m.enabled?'Disable':'Enable'}" onclick="toggleMod('${esc(m.name)}',${!m.enabled})"></div>
+      <div class="mod-toggle ${m.enabled?'on':''} ${locked?'':''}""
+        title="${locked ? 'Container running — stop it to change mods' : (m.enabled?'Disable':'Enable')}"
+        style="${locked ? 'cursor:not-allowed;opacity:0.4' : 'cursor:pointer'}"
+        onclick="${locked ? '' : `toggleMod('${esc(m.name)}',${!m.enabled})`}"></div>
       <div class="mod-name-cell">
         <div class="mod-name">${esc(m.name)}</div>
         ${m.description ? `<div class="mod-desc">${esc(m.description)}</div>` : ''}
@@ -1191,13 +1424,17 @@ function renderMods() {
       <div class="mod-meta">${m.author ? esc(m.author) : '—'}</div>
       <div><span class="mod-status ${m.enabled?'on':'off'}">${m.enabled?'ENABLED':'DISABLED'}</span></div>
       <div class="mod-actions">
-        <button class="icon-btn danger" title="Delete mod" onclick="confirmDelete('${esc(m.name)}')">🗑</button>
+        <button class="icon-btn danger" title="Delete mod" onclick="confirmDelete('${esc(m.name)}')" ${isProfileLocked(state.activeProfile)?'disabled style="opacity:0.3;cursor:not-allowed"':''}>🗑</button>
       </div>
     </div>
   `).join('');
 }
 
 async function toggleMod(name, enable) {
+  if (isProfileLocked(state.activeProfile)) {
+    toast('Container is running — stop it first', 'error');
+    return;
+  }
   try {
     const r = await fetch(`${API}/api/mods/toggle`, {
       method: 'POST',
