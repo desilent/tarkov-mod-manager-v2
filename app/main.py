@@ -473,36 +473,40 @@ def detect_spt_structure(staging: Path) -> dict:
 
     return result
 
-def install_detected_mods(detected: dict, config: dict) -> dict:
-    """Install detected mods to ALL profiles that have matching paths configured.
+def install_detected_mods(detected: dict, profile_id: str, config: dict) -> dict:
+    """Install detected mods to the specified profile's matching paths.
     Returns summary of what was installed where."""
     summary = {"installations": [], "skipped": []}
     profiles = config.get("profiles", {})
+    profile = profiles.get(profile_id)
+    if not profile:
+        return summary
 
     for folder_type in ["mods", "plugins"]:
         items = detected.get(folder_type, [])
         if not items:
             continue
         path_key = "mods_path" if folder_type == "mods" else "plugins_path"
-
-        for pid, profile in profiles.items():
-            dest_str = profile.get(path_key, "")
-            if not dest_str:
-                continue
-            dest = Path(dest_str)
-            dest.mkdir(parents=True, exist_ok=True)
-
+        dest_str = profile.get(path_key, "")
+        if not dest_str:
+            # No path configured for this folder type — skip
             for item in items:
-                target = dest / item.name
-                if target.exists():
-                    shutil.rmtree(target) if target.is_dir() else target.unlink()
-                shutil.copytree(str(item), str(target)) if item.is_dir() else shutil.copy2(str(item), str(target))
-                summary["installations"].append({
-                    "mod": item.name, "profile": pid,
-                    "folder": folder_type, "label": profile.get("label", pid)
-                })
+                summary["skipped"].append(item.name)
+            continue
+        dest = Path(dest_str)
+        dest.mkdir(parents=True, exist_ok=True)
 
-    # Unknown items: install to the active profile's mods_path as fallback
+        for item in items:
+            target = dest / item.name
+            if target.exists():
+                shutil.rmtree(target) if target.is_dir() else target.unlink()
+            shutil.copytree(str(item), str(target)) if item.is_dir() else shutil.copy2(str(item), str(target))
+            summary["installations"].append({
+                "mod": item.name, "profile": profile_id,
+                "folder": folder_type, "label": profile.get("label", profile_id)
+            })
+
+    # Unknown items: skip
     for item in detected.get("unknown", []):
         summary["skipped"].append(item.name)
 
@@ -633,15 +637,15 @@ def delete_mod(profile: str, folder: str, mod_name: str):
             return {"ok": True}
     raise HTTPException(status_code=404, detail="Mod not found")
 
-@app.post("/api/mods/smart-install/upload")
-async def smart_install_upload(file: UploadFile = File(...)):
-    """Smart install: extract, detect structure, install to all matching profiles."""
+@app.post("/api/mods/smart-install/{profile}/upload")
+async def smart_install_upload(profile: str, file: UploadFile = File(...)):
+    """Smart install: extract, detect structure, install to the selected profile."""
     cfg = load_config()
-    # Check if ANY container is running
-    for pid in cfg["profiles"]:
-        if is_container_running(pid):
-            raise HTTPException(status_code=409,
-                detail=f"Container for {cfg['profiles'][pid].get('label', pid)} is running — stop all containers first")
+    if profile not in cfg.get("profiles", {}):
+        raise HTTPException(status_code=404, detail=f"Profile '{profile}' not found")
+    if is_container_running(profile):
+        raise HTTPException(status_code=409,
+            detail=f"Container for {cfg['profiles'][profile].get('label', profile)} is running — stop it first")
 
     tmp_dir = DATA_DIR / "__tmp_install__"
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -662,7 +666,7 @@ async def smart_install_upload(file: UploadFile = File(...)):
             shutil.move(str(tmp_file), str(staging / file.filename))
 
         detected = detect_spt_structure(staging)
-        summary = install_detected_mods(detected, cfg)
+        summary = install_detected_mods(detected, profile, cfg)
         return {"ok": True, "filename": file.filename, "detected": {
             "mods": [p.name for p in detected["mods"]],
             "plugins": [p.name for p in detected["plugins"]],
@@ -674,14 +678,15 @@ async def smart_install_upload(file: UploadFile = File(...)):
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-@app.post("/api/mods/smart-install/url")
-async def smart_install_url(req: InstallUrlRequest):
-    """Smart install from URL."""
+@app.post("/api/mods/smart-install/{profile}/url")
+async def smart_install_url(profile: str, req: InstallUrlRequest):
+    """Smart install from URL to the selected profile."""
     cfg = load_config()
-    for pid in cfg["profiles"]:
-        if is_container_running(pid):
-            raise HTTPException(status_code=409,
-                detail=f"Container for {cfg['profiles'][pid].get('label', pid)} is running — stop all containers first")
+    if profile not in cfg.get("profiles", {}):
+        raise HTTPException(status_code=404, detail=f"Profile '{profile}' not found")
+    if is_container_running(profile):
+        raise HTTPException(status_code=409,
+            detail=f"Container for {cfg['profiles'][profile].get('label', profile)} is running — stop it first")
 
     tmp_dir = DATA_DIR / "__tmp_install__"
     tmp_dir.mkdir(parents=True, exist_ok=True)
@@ -701,7 +706,7 @@ async def smart_install_url(req: InstallUrlRequest):
             shutil.move(str(tmp_file), str(staging / filename))
 
         detected = detect_spt_structure(staging)
-        summary = install_detected_mods(detected, cfg)
+        summary = install_detected_mods(detected, profile, cfg)
         return {"ok": True, "filename": filename, "detected": {
             "mods": [p.name for p in detected["mods"]],
             "plugins": [p.name for p in detected["plugins"]],
@@ -717,11 +722,11 @@ async def smart_install_url(req: InstallUrlRequest):
 @app.post("/api/mods/{profile}/upload")
 async def upload_mod_legacy(profile: str, file: UploadFile = File(...)):
     """Legacy single-profile upload — redirects to smart install."""
-    return await smart_install_upload(file)
+    return await smart_install_upload(profile, file)
 
-@app.post("/api/mods/install-url")
-async def install_url_legacy(req: InstallUrlRequest):
-    return await smart_install_url(req)
+@app.post("/api/mods/{profile}/install-url")
+async def install_url_legacy(profile: str, req: InstallUrlRequest):
+    return await smart_install_url(profile, req)
 
 # ── Containers ────────────────────────────────────────────────────────────────
 
