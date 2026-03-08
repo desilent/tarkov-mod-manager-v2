@@ -249,6 +249,67 @@ def _docker_request(method: str, path: str, body: dict | None = None) -> dict:
                 pass
         return {}
 
+def _docker_request_raw(method: str, path: str, max_bytes: int = 512_000) -> bytes:
+    """Make a raw HTTP request to the Docker Unix socket and return raw body bytes.
+    Used for endpoints that don't return JSON (e.g. container logs)."""
+    sock_path = DOCKER_SOCKET
+    if not os.path.exists(sock_path):
+        raise HTTPException(status_code=503, detail="Docker socket not available.")
+
+    req = (
+        f"{method} {path} HTTP/1.0\r\n"
+        f"Host: localhost\r\n"
+        f"\r\n"
+    )
+
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+        s.settimeout(5)
+        s.connect(sock_path)
+        s.sendall(req.encode())
+        response = b""
+        try:
+            while len(response) < max_bytes:
+                chunk = s.recv(8192)
+                if not chunk:
+                    break
+                response += chunk
+        except socket.timeout:
+            pass
+
+    # Split headers from body
+    sep = b"\r\n\r\n"
+    if sep in response:
+        _, body = response.split(sep, 1)
+    else:
+        body = response
+    return body
+
+def _strip_docker_log_headers(raw: bytes) -> str:
+    """Docker multiplexed log stream has 8-byte headers per frame:
+    [stream_type(1) + padding(3) + size(4)] + payload.
+    Strip these to get clean log text."""
+    lines = []
+    pos = 0
+    while pos + 8 <= len(raw):
+        # Read frame header
+        frame_type = raw[pos]
+        size = int.from_bytes(raw[pos+4:pos+8], 'big')
+        pos += 8
+        if pos + size > len(raw):
+            # Incomplete frame — take what we have
+            payload = raw[pos:]
+        else:
+            payload = raw[pos:pos+size]
+        pos += size
+        try:
+            lines.append(payload.decode('utf-8', errors='replace').rstrip('\n'))
+        except Exception:
+            pass
+    if not lines and raw:
+        # Fallback: maybe logs aren't multiplexed (tty mode)
+        return raw.decode('utf-8', errors='replace')
+    return '\n'.join(lines)
+
 def get_container_status(container_name: str) -> dict:
     """Return container running state. Returns {name, state, status, available}."""
     if not container_name:
@@ -727,6 +788,28 @@ def start_container(profile: str):
     except HTTPException:
         raise
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/containers/{profile}/logs")
+def container_logs(profile: str, lines: int = 150, since: int = 0):
+    """Fetch recent container logs. Returns plain text log lines.
+    - lines: number of tail lines (default 150)
+    - since: unix timestamp to fetch logs since (0 = ignored)
+    """
+    container = CONTAINER_MAP.get(profile, "")
+    if not container:
+        raise HTTPException(status_code=400, detail="No container configured for this profile")
+    try:
+        params = f"stdout=1&stderr=1&tail={lines}&timestamps=1"
+        if since > 0:
+            params += f"&since={since}"
+        raw = _docker_request_raw("GET", f"/containers/{container}/logs?{params}")
+        text = _strip_docker_log_headers(raw)
+        return {"ok": True, "logs": text, "container": container}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.warning(f"Log fetch failed for {container}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ── Auth Routes ───────────────────────────────────────────────────────────────

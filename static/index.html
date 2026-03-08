@@ -309,6 +309,14 @@
     overflow: hidden;
   }
 
+  #viewMods, #viewPresets {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    overflow: hidden;
+    min-height: 0;
+  }
+
   /* toolbar */
   .toolbar {
     display: flex;
@@ -1155,6 +1163,102 @@
     flex-shrink: 0;
   }
 
+  /* ── LOG PANEL ── */
+  .log-panel {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    max-height: 40vh;
+    border-top: 1px solid var(--border);
+  }
+
+  .log-divider {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 20px;
+    background: var(--bg-panel);
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s;
+    flex-shrink: 0;
+  }
+  .log-divider:hover { background: var(--bg-hover); }
+
+  .log-divider-label {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .log-divider-icon {
+    font-size: 8px;
+    transition: transform 0.2s;
+    display: inline-block;
+  }
+  .log-divider-icon.collapsed { transform: rotate(-90deg); }
+
+  .log-divider-container {
+    color: var(--text-secondary);
+    font-size: 9px;
+  }
+
+  .log-divider-actions {
+    display: flex;
+    gap: 6px;
+  }
+
+  .log-action-btn {
+    padding: 2px 8px;
+    background: none;
+    border: 1px solid var(--border-bright);
+    border-radius: 2px;
+    color: var(--text-dim);
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 8px;
+    letter-spacing: 1px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .log-action-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+  .log-action-btn.active { color: var(--enabled); border-color: rgba(61,232,122,0.3); }
+
+  .log-body {
+    flex: 1;
+    overflow-y: auto;
+    background: #080a0c;
+    min-height: 0;
+    max-height: 35vh;
+    transition: max-height 0.25s ease;
+  }
+  .log-body.collapsed { max-height: 0; overflow: hidden; }
+
+  .log-body::-webkit-scrollbar { width: 4px; }
+  .log-body::-webkit-scrollbar-track { background: transparent; }
+  .log-body::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+  .log-content {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 10px;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    padding: 10px 20px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-all;
+  }
+
+  /* Color-code log levels */
+  .log-line-error { color: var(--accent-red); }
+  .log-line-warn { color: #e8a84b; }
+  .log-line-info { color: var(--text-secondary); }
+  .log-line-debug { color: var(--text-dim); }
+  .log-line-timestamp { color: var(--text-dim); }
+
   /* ── LOGIN SCREEN ── */
   .login-overlay {
     position: fixed;
@@ -1508,6 +1612,25 @@
         </div>
       </div>
     </div>
+
+    <!-- LOG PANEL -->
+    <div class="log-panel" id="logPanel" style="display:none">
+      <div class="log-divider" id="logDivider" onclick="toggleLogPanel()">
+        <span class="log-divider-label">
+          <span class="log-divider-icon" id="logChevron">▼</span>
+          CONTAINER LOG
+          <span class="log-divider-container" id="logContainerName"></span>
+        </span>
+        <span class="log-divider-actions">
+          <button class="log-action-btn" onclick="event.stopPropagation();clearLogDisplay()" title="Clear display">CLEAR</button>
+          <button class="log-action-btn" id="logAutoBtn" onclick="event.stopPropagation();toggleLogAuto()" title="Toggle auto-refresh">AUTO: ON</button>
+        </span>
+      </div>
+      <div class="log-body" id="logBody">
+        <pre class="log-content" id="logContent">Waiting for logs...</pre>
+      </div>
+    </div>
+
     </div><!-- /viewMods -->
 
     <!-- ═══ PRESETS VIEW ═══ -->
@@ -1853,12 +1976,22 @@ async function fetchContainerStatuses() {
     const r = await fetch(`${API}/api/containers`);
     if (!r.ok) return;
     state.containers = await r.json();
+    updateContainerMapFrontend();
     renderContainerBar();
     renderLockBanner();
     renderSidebar();
     if (state.currentView === 'presets') {
       renderPresetsToolbar();
       renderPresets();
+    }
+    // Show/hide log panel based on container availability
+    if (state.currentView === 'mods' && state.activeProfile) {
+      const panel = document.getElementById('logPanel');
+      if (CONTAINER_MAP_FRONTEND[state.activeProfile]) {
+        if (panel.style.display === 'none') showLogPanel();
+      } else {
+        hideLogPanel();
+      }
     }
   } catch { /* silently ignore — docker socket may not be mounted */ }
 }
@@ -2026,6 +2159,10 @@ async function selectProfile(id) {
   if (state.currentView === 'presets') {
     renderPresetsToolbar();
     await refreshPresets();
+  }
+  // Log panel: show if profile has a container
+  if (state.currentView === 'mods') {
+    showLogPanel();
   }
 }
 
@@ -2321,6 +2458,123 @@ async function deleteEditingProfile() {
   }
 }
 
+// ── Log Panel ─────────────────────────────────────────────────────────────
+let logState = {
+  collapsed: false,
+  autoRefresh: true,
+  pollTimer: null,
+  lastProfile: null,
+};
+
+function showLogPanel() {
+  const panel = document.getElementById('logPanel');
+  const container = CONTAINER_MAP_FRONTEND[state.activeProfile];
+  if (!container) {
+    panel.style.display = 'none';
+    stopLogPolling();
+    return;
+  }
+  panel.style.display = '';
+  document.getElementById('logContainerName').textContent = container;
+  if (logState.autoRefresh) startLogPolling();
+}
+
+function hideLogPanel() {
+  document.getElementById('logPanel').style.display = 'none';
+  stopLogPolling();
+}
+
+function toggleLogPanel() {
+  logState.collapsed = !logState.collapsed;
+  document.getElementById('logBody').classList.toggle('collapsed', logState.collapsed);
+  document.getElementById('logChevron').classList.toggle('collapsed', logState.collapsed);
+}
+
+function toggleLogAuto() {
+  logState.autoRefresh = !logState.autoRefresh;
+  const btn = document.getElementById('logAutoBtn');
+  btn.textContent = `AUTO: ${logState.autoRefresh ? 'ON' : 'OFF'}`;
+  btn.classList.toggle('active', logState.autoRefresh);
+  if (logState.autoRefresh) {
+    startLogPolling();
+  } else {
+    stopLogPolling();
+  }
+}
+
+function startLogPolling() {
+  stopLogPolling();
+  fetchLogs();
+  logState.pollTimer = setInterval(fetchLogs, 3000);
+}
+
+function stopLogPolling() {
+  if (logState.pollTimer) {
+    clearInterval(logState.pollTimer);
+    logState.pollTimer = null;
+  }
+}
+
+function clearLogDisplay() {
+  document.getElementById('logContent').innerHTML = '<span style="color:var(--text-dim)">Log cleared. Waiting for new entries...</span>';
+}
+
+async function fetchLogs() {
+  if (!state.activeProfile) return;
+  try {
+    const r = await fetch(`${API}/api/containers/${state.activeProfile}/logs?lines=200`);
+    if (!r.ok) {
+      if (r.status === 400) {
+        // No container configured
+        document.getElementById('logContent').innerHTML = '<span style="color:var(--text-dim)">No container configured for this profile.</span>';
+        return;
+      }
+      return;
+    }
+    const d = await r.json();
+    if (!d.logs) return;
+    renderLogs(d.logs);
+  } catch { /* ignore */ }
+}
+
+function renderLogs(text) {
+  const el = document.getElementById('logContent');
+  const body = document.getElementById('logBody');
+  const wasAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+
+  // Color-code lines
+  const lines = text.split('\n').map(line => {
+    const escaped = esc(line);
+    // Try to detect timestamp prefix (ISO or Docker format)
+    let colored = escaped;
+    if (/error|exception|fail|critical/i.test(line)) {
+      colored = `<span class="log-line-error">${escaped}</span>`;
+    } else if (/warn/i.test(line)) {
+      colored = `<span class="log-line-warn">${escaped}</span>`;
+    } else if (/debug|trace/i.test(line)) {
+      colored = `<span class="log-line-debug">${escaped}</span>`;
+    }
+    return colored;
+  });
+
+  el.innerHTML = lines.join('\n');
+
+  // Auto-scroll to bottom if user was already near the bottom
+  if (wasAtBottom) {
+    body.scrollTop = body.scrollHeight;
+  }
+}
+
+// We need to know which profiles have containers — build a frontend map
+// from the containers state (populated by polling)
+const CONTAINER_MAP_FRONTEND = {};
+function updateContainerMapFrontend() {
+  Object.entries(state.containers).forEach(([pid, c]) => {
+    if (c.name) CONTAINER_MAP_FRONTEND[pid] = c.name;
+    else delete CONTAINER_MAP_FRONTEND[pid];
+  });
+}
+
 // ── View switching ────────────────────────────────────────────────────────
 function switchView(view) {
   state.currentView = view;
@@ -2331,6 +2585,9 @@ function switchView(view) {
   if (view === 'presets') {
     renderPresetsToolbar();
     refreshPresets();
+    stopLogPolling();
+  } else if (view === 'mods') {
+    showLogPanel();
   }
 }
 
