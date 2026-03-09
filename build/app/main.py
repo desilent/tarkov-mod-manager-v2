@@ -279,8 +279,7 @@ class PresetSaveRequest(BaseModel):
 class AuthLoginRequest(BaseModel):
     password: str
 
-class ConfigFileWriteRequest(BaseModel):
-    path: str
+class ConfigFileSaveRequest(BaseModel):
     content: str
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -840,209 +839,180 @@ def delete_preset(profile: str, preset_id: str):
 
 # ── Config File Editor ─────────────────────────────────────────────────────────
 
-CONFIG_EDITABLE_EXTENSIONS = {".cfg", ".json", ".yaml", ".yml", ".ini", ".txt", ".xml", ".toml"}
+EDITABLE_EXTENSIONS = {".cfg", ".json", ".yaml", ".yml", ".txt", ".ini", ".xml", ".toml", ".properties"}
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 
 def _safe_resolve(base: Path, rel: str) -> Path:
-    """Resolve a path safely within a base directory."""
+    """Resolve a relative path against a base and ensure it stays within it."""
     resolved = (base / rel).resolve()
-    if not str(resolved).startswith(str(base.resolve())):
+    base_resolved = base.resolve()
+    if not str(resolved).startswith(str(base_resolved)):
         raise HTTPException(status_code=403, detail="Path traversal not allowed")
     return resolved
 
-def _scan_config_files_in_dir(root: Path, prefix: str = "") -> list[dict]:
+def _scan_config_files_in_dir(base_dir: Path, source_label: str, prefix: str = "") -> list[dict]:
     """Recursively scan a directory for editable config files."""
     files = []
-    if not root.exists():
+    if not base_dir.exists():
         return files
     try:
-        for item in sorted(root.iterdir()):
-            if item.name.startswith(".") or item.name.startswith("__"):
+        for item in sorted(base_dir.rglob("*")):
+            if not item.is_file():
                 continue
-            rel = f"{prefix}/{item.name}" if prefix else item.name
-            if item.is_dir():
-                files.extend(_scan_config_files_in_dir(item, rel))
-            elif item.suffix.lower() in CONFIG_EDITABLE_EXTENSIONS:
-                try:
-                    size = item.stat().st_size
-                    if size <= MAX_FILE_SIZE:
-                        files.append({
-                            "path": rel,
-                            "name": item.name,
-                            "size": size,
-                            "ext": item.suffix.lower(),
-                            "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat(),
-                        })
-                except OSError:
-                    pass
-    except PermissionError:
-        pass
+            if item.suffix.lower() not in EDITABLE_EXTENSIONS:
+                continue
+            if item.stat().st_size > MAX_FILE_SIZE:
+                continue
+            # Skip __disabled__ directories
+            rel = item.relative_to(base_dir)
+            if "__disabled__" in rel.parts:
+                continue
+            files.append({
+                "name": item.name,
+                "path": str(rel),
+                "size": item.stat().st_size,
+                "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat(),
+                "source": source_label,
+                "ext": item.suffix.lower(),
+            })
+    except Exception as e:
+        logger.warning(f"Error scanning {base_dir}: {e}")
     return files
+
+def _get_config_base_paths(profile_id: str) -> list[tuple[Path, str]]:
+    """Get all base directories to scan for config files for a profile."""
+    p = _get_profile(profile_id)
+    paths = []
+
+    # Scan BepInEx/config (sibling to plugins_path)
+    plugins_path = p.get("plugins_path", "")
+    if plugins_path:
+        plugins_p = Path(plugins_path)
+        # BepInEx/plugins -> BepInEx/config
+        if plugins_p.name == "plugins" or "plugins" in plugins_p.parts:
+            bepinex_dir = plugins_p.parent
+            config_dir = bepinex_dir / "config"
+            if config_dir.exists():
+                paths.append((config_dir, "BepInEx/config"))
+        # Also scan inside plugins for config files
+        if plugins_p.exists():
+            paths.append((plugins_p, "BepInEx/plugins"))
+
+    # Scan user/mods/*/config directories
+    mods_path = p.get("mods_path", "")
+    if mods_path:
+        mods_p = Path(mods_path)
+        if mods_p.exists():
+            for mod_dir in sorted(mods_p.iterdir()):
+                if not mod_dir.is_dir() or mod_dir.name.startswith(".") or mod_dir.name.startswith("__"):
+                    continue
+                config_dir = mod_dir / "config"
+                if config_dir.exists():
+                    paths.append((config_dir, f"user/mods/{mod_dir.name}/config"))
+                # Also look for json configs directly in mod root
+                for f in mod_dir.iterdir():
+                    if f.is_file() and f.suffix.lower() in EDITABLE_EXTENSIONS and f.name != "package.json":
+                        # We'll pick these up via a scan of the mod dir itself
+                        pass
+                # Scan mod root for individual config files (not recursively deep)
+                paths.append((mod_dir, f"user/mods/{mod_dir.name}"))
+
+    return paths
+
 
 @app.get("/api/config-files/{profile}")
 def list_config_files(profile: str):
-    """Scan for editable config files across all known paths for a profile."""
-    p = _get_profile(profile)
-    sources = []
+    """List all editable config files for a profile."""
+    base_paths = _get_config_base_paths(profile)
+    all_files = []
+    seen = set()
 
-    # 1. BepInEx/config — derived from plugins_path (sibling of plugins dir)
-    plugins_path = p.get("plugins_path", "")
-    if plugins_path:
-        plugins_dir = Path(plugins_path)
-        # plugins_path is typically .../BepInEx/plugins/<profile>
-        # We want .../BepInEx/config
-        bepinex_dir = None
-        # Walk up to find BepInEx directory
-        for parent in [plugins_dir] + list(plugins_dir.parents):
-            if parent.name == "BepInEx":
-                bepinex_dir = parent
-                break
-            # Also check if parent contains BepInEx
-            candidate = parent / "BepInEx"
-            if candidate.exists() and candidate.is_dir():
-                bepinex_dir = candidate
-                break
-        if bepinex_dir:
-            config_dir = bepinex_dir / "config"
-            if config_dir.exists():
-                files = _scan_config_files_in_dir(config_dir)
-                if files:
-                    sources.append({
-                        "id": "bepinex-config",
-                        "label": "BepInEx/config",
-                        "base_path": str(config_dir),
-                        "files": files,
-                    })
+    for base_dir, source_label in base_paths:
+        files = _scan_config_files_in_dir(base_dir, source_label)
+        for f in files:
+            # Build a unique key to avoid duplicates
+            full_path = str(base_dir / f["path"])
+            if full_path not in seen:
+                seen.add(full_path)
+                f["base_dir"] = str(base_dir)
+                all_files.append(f)
 
-        # 2. BepInEx/plugins subdirs — scan for config files inside plugin folders
-        if plugins_dir.exists():
-            files = _scan_config_files_in_dir(plugins_dir)
-            if files:
-                sources.append({
-                    "id": "plugins",
-                    "label": "BepInEx/plugins",
-                    "base_path": str(plugins_dir),
-                    "files": files,
-                })
+    return {"profile": profile, "files": all_files}
 
-    # 3. user/mods/*/config/ directories
-    mods_path = p.get("mods_path", "")
-    if mods_path:
-        mods_dir = Path(mods_path)
-        if mods_dir.exists():
-            mod_configs = []
-            for mod_dir in sorted(mods_dir.iterdir()):
-                if not mod_dir.is_dir() or mod_dir.name.startswith(".") or mod_dir.name.startswith("__"):
-                    continue
-                # Scan the mod directory for config files (config/ subdir + root .json/.cfg)
-                config_subdir = mod_dir / "config"
-                if config_subdir.exists():
-                    for f in _scan_config_files_in_dir(config_subdir):
-                        mod_configs.append({
-                            **f,
-                            "path": f"{mod_dir.name}/config/{f['path']}",
-                        })
-                # Also scan root of mod for .json and .cfg files
-                for item in sorted(mod_dir.iterdir()):
-                    if item.is_file() and item.suffix.lower() in CONFIG_EDITABLE_EXTENSIONS:
-                        try:
-                            size = item.stat().st_size
-                            if size <= MAX_FILE_SIZE:
-                                mod_configs.append({
-                                    "path": f"{mod_dir.name}/{item.name}",
-                                    "name": item.name,
-                                    "size": size,
-                                    "ext": item.suffix.lower(),
-                                    "modified": datetime.fromtimestamp(item.stat().st_mtime).isoformat(),
-                                })
-                        except OSError:
-                            pass
-            if mod_configs:
-                sources.append({
-                    "id": "mods",
-                    "label": "user/mods",
-                    "base_path": str(mods_dir),
-                    "files": mod_configs,
-                })
-
-    return {"profile": profile, "sources": sources}
 
 @app.get("/api/config-files/{profile}/read")
-def read_config_file(profile: str, source: str, path: str):
-    """Read a single config file's contents."""
-    p = _get_profile(profile)
-    sources_map = _build_sources_map(profile, p)
-    if source not in sources_map:
-        raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
-    base = Path(sources_map[source])
-    file_path = _safe_resolve(base, path)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-    if not file_path.is_file():
-        raise HTTPException(status_code=400, detail="Not a file")
-    if file_path.stat().st_size > MAX_FILE_SIZE:
-        raise HTTPException(status_code=413, detail="File too large")
-    try:
-        content = file_path.read_text(encoding="utf-8", errors="replace")
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Read error: {e}")
-    return {"path": path, "source": source, "content": content, "size": len(content)}
+def read_config_file(profile: str, base_dir: str, file_path: str):
+    """Read the content of a config file."""
+    _get_profile(profile)  # Validate profile exists
+    base = Path(base_dir)
+    if not base.exists():
+        raise HTTPException(status_code=404, detail="Base directory not found")
 
-@app.post("/api/config-files/{profile}/write")
-def write_config_file(profile: str, req: ConfigFileWriteRequest):
-    """Write updated content to a config file. Expects source as query param."""
-    p = _get_profile(profile)
-    # Extract source from path prefix or query
-    # We pass source in the path field as "source::relative/path"
-    if "::" not in req.path:
-        raise HTTPException(status_code=400, detail="Path must be source::relative/path")
-    source, rel_path = req.path.split("::", 1)
-    sources_map = _build_sources_map(profile, p)
-    if source not in sources_map:
-        raise HTTPException(status_code=404, detail=f"Source '{source}' not found")
-    base = Path(sources_map[source])
-    file_path = _safe_resolve(base, rel_path)
-    if not file_path.exists():
+    target = _safe_resolve(base, file_path)
+    if not target.exists():
         raise HTTPException(status_code=404, detail="File not found")
-    if not file_path.is_file():
+    if not target.is_file():
         raise HTTPException(status_code=400, detail="Not a file")
+    if target.suffix.lower() not in EDITABLE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="File type not editable")
+    if target.stat().st_size > MAX_FILE_SIZE:
+        raise HTTPException(status_code=400, detail="File too large")
+
+    try:
+        content = target.read_text(encoding="utf-8", errors="replace")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read file: {e}")
+
+    return {
+        "name": target.name,
+        "path": file_path,
+        "base_dir": str(base_dir),
+        "content": content,
+        "size": target.stat().st_size,
+        "modified": datetime.fromtimestamp(target.stat().st_mtime).isoformat(),
+        "ext": target.suffix.lower(),
+    }
+
+
+@app.put("/api/config-files/{profile}/write")
+def write_config_file(profile: str, base_dir: str, file_path: str, req: ConfigFileSaveRequest):
+    """Write content to a config file."""
+    if is_container_running(profile):
+        raise HTTPException(status_code=409, detail="Container is running — stop it before editing configs")
+
+    _get_profile(profile)
+    base = Path(base_dir)
+    if not base.exists():
+        raise HTTPException(status_code=404, detail="Base directory not found")
+
+    target = _safe_resolve(base, file_path)
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="File not found")
+    if target.suffix.lower() not in EDITABLE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail="File type not editable")
+
     # Create backup
-    backup = file_path.with_suffix(file_path.suffix + ".bak")
+    backup_dir = DATA_DIR / "config_backups" / profile
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_name = f"{target.stem}_{datetime.now().strftime('%Y%m%d_%H%M%S')}{target.suffix}"
     try:
-        shutil.copy2(str(file_path), str(backup))
-    except Exception:
-        pass  # Non-fatal
-    try:
-        file_path.write_text(req.content, encoding="utf-8")
+        shutil.copy2(str(target), str(backup_dir / backup_name))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Write error: {e}")
-    return {"ok": True, "path": rel_path, "source": source, "size": len(req.content)}
+        logger.warning(f"Backup failed: {e}")
 
-def _build_sources_map(profile: str, p: dict) -> dict:
-    """Build a map of source_id -> base_path for a profile."""
-    sources = {}
-    plugins_path = p.get("plugins_path", "")
-    if plugins_path:
-        plugins_dir = Path(plugins_path)
-        bepinex_dir = None
-        for parent in [plugins_dir] + list(plugins_dir.parents):
-            if parent.name == "BepInEx":
-                bepinex_dir = parent
-                break
-            candidate = parent / "BepInEx"
-            if candidate.exists() and candidate.is_dir():
-                bepinex_dir = candidate
-                break
-        if bepinex_dir:
-            config_dir = bepinex_dir / "config"
-            if config_dir.exists():
-                sources["bepinex-config"] = str(config_dir)
-        if plugins_dir.exists():
-            sources["plugins"] = str(plugins_dir)
-    mods_path = p.get("mods_path", "")
-    if mods_path:
-        sources["mods"] = mods_path
-    return sources
+    try:
+        target.write_text(req.content, encoding="utf-8")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to write file: {e}")
+
+    return {
+        "ok": True,
+        "name": target.name,
+        "size": target.stat().st_size,
+        "modified": datetime.fromtimestamp(target.stat().st_mtime).isoformat(),
+        "backup": backup_name,
+    }
+
 
 # ── Auth Routes ───────────────────────────────────────────────────────────────
 

@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  raid-mod-manager:
+    image: ghcr.io/desilent/tarkov-mod-manager-v2:latest
+    container_name: raid-mod-manager
+    restart: unless-stopped
+    ports:
+      - "${PORT:-7272}:7272"
+
+    volumes:
+      - ${APPDATA_DIR:-./data}:/data
+
+      # ── FIKA Server ──
+      # Mount the server's user/mods and BepInEx/plugins directories
+      - ${FIKA_SERVER_MODS:-/mnt/user/appdata/spt-fika-server/SPT/user/mods}:/mods/fika-server
+      - ${FIKA_SERVER_PLUGINS:-/mnt/user/appdata/spt-fika-server/SPT/BepInEx/plugins}:/plugins/fika-server
+
+      # ── FIKA Headless ──
+      - ${FIKA_HEADLESS_MODS:-/mnt/user/appdata/SPT/user/mods}:/mods/fika-headless
+      - ${FIKA_HEADLESS_PLUGINS:-/mnt/user/appdata/SPT/BepInEx/plugins}:/plugins/fika-headless
+
+      # ── SPT Client (optional — uncomment if reachable from Unraid) ──
+      # - ${SPT_CLIENT_MODS:-}:/mods/spt-client
+      # - ${SPT_CLIENT_PLUGINS:-}:/plugins/spt-client
+
+      # Docker socket for start/stop/logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+    environment:
+      TZ: ${TZ:-Europe/Berlin}
+
+      # ── Profile paths (dual: mods + plugins per profile) ──
+      PROFILE_FIKA_SERVER_MODS_PATH:      /mods/fika-server
+      PROFILE_FIKA_SERVER_PLUGINS_PATH:   /plugins/fika-server
+      PROFILE_FIKA_HEADLESS_MODS_PATH:    /mods/fika-headless
+      PROFILE_FIKA_HEADLESS_PLUGINS_PATH: /plugins/fika-headless
+      PROFILE_SPT_CLIENT_MODS_PATH:       /mods/spt-client
+      PROFILE_SPT_CLIENT_PLUGINS_PATH:    /plugins/spt-client
+
+      # ── Labels & colors ──
+      PROFILE_FIKA_SERVER_LABEL:    ${PROFILE_FIKA_SERVER_LABEL:-FIKA Server}
+      PROFILE_FIKA_HEADLESS_LABEL:  ${PROFILE_FIKA_HEADLESS_LABEL:-FIKA Headless}
+      PROFILE_SPT_CLIENT_LABEL:     ${PROFILE_SPT_CLIENT_LABEL:-SPT Client}
+
+      PROFILE_FIKA_SERVER_COLOR:    ${PROFILE_FIKA_SERVER_COLOR:-#e8b84b}
+      PROFILE_FIKA_HEADLESS_COLOR:  ${PROFILE_FIKA_HEADLESS_COLOR:-#4be8c0}
+      PROFILE_SPT_CLIENT_COLOR:     ${PROFILE_SPT_CLIENT_COLOR:-#e84b4b}
+
+      # ── Container names (for start/stop/logs) ──
+      PROFILE_FIKA_SERVER_CONTAINER:    ${PROFILE_FIKA_SERVER_CONTAINER:-spt-fika-server}
+      PROFILE_FIKA_HEADLESS_CONTAINER:  ${PROFILE_FIKA_HEADLESS_CONTAINER:-SPT}
+      PROFILE_SPT_CLIENT_CONTAINER:     ${PROFILE_SPT_CLIENT_CONTAINER:-}
+
+      # ── Auth (optional) ──
+      AUTH_PASSWORD:       ${AUTH_PASSWORD:-}
+      AUTH_SESSION_HOURS:  ${AUTH_SESSION_HOURS:-72}
