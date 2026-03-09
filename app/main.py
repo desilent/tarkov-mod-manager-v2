@@ -278,6 +278,7 @@ class InstallUrlRequest(BaseModel):
 
 class PresetSaveRequest(BaseModel):
     label: str
+    include_configs: bool = False
 
 class AuthLoginRequest(BaseModel):
     password: str
@@ -781,6 +782,95 @@ def apply_preset(profile_id: str, preset: dict):
 
     return moved
 
+PRESET_CONFIGS_DIR = DATA_DIR / "preset_configs"
+PRESET_CONFIGS_DIR.mkdir(parents=True, exist_ok=True)
+
+def _snapshot_config_files(profile_id: str) -> dict:
+    """Capture all config files for a profile into a dict {source::path: content}."""
+    p = _get_profile(profile_id)
+    sources_map = _build_sources_map(profile_id, p)
+    snapshot = {}
+    for source_id, base_path in sources_map.items():
+        base = Path(base_path)
+        if not base.exists():
+            continue
+        for ext in CONFIG_EDITABLE_EXTENSIONS:
+            try:
+                for f in base.rglob(f"*{ext}"):
+                    if f.name.startswith(".") or "__disabled__" in str(f):
+                        continue
+                    rel = str(f.relative_to(base))
+                    try:
+                        size = f.stat().st_size
+                        if size <= MAX_FILE_SIZE:
+                            content = f.read_text(encoding="utf-8", errors="replace")
+                            snapshot[f"{source_id}::{rel}"] = content
+                    except OSError:
+                        pass
+            except Exception:
+                pass
+    return snapshot
+
+def _restore_config_files(profile_id: str, snapshot: dict) -> dict:
+    """Restore config files from a snapshot. Returns summary."""
+    p = _get_profile(profile_id)
+    sources_map = _build_sources_map(profile_id, p)
+    restored = []
+    skipped = []
+    for key, content in snapshot.items():
+        if "::" not in key:
+            skipped.append(key)
+            continue
+        source_id, rel_path = key.split("::", 1)
+        if source_id not in sources_map:
+            skipped.append(key)
+            continue
+        base = Path(sources_map[source_id])
+        try:
+            file_path = _safe_resolve(base, rel_path)
+        except HTTPException:
+            skipped.append(key)
+            continue
+        # Create backup before overwriting
+        if file_path.exists():
+            backup = file_path.with_suffix(file_path.suffix + ".bak")
+            try:
+                shutil.copy2(str(file_path), str(backup))
+            except Exception:
+                pass
+        # Ensure parent dirs exist
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            file_path.write_text(content, encoding="utf-8")
+            restored.append(rel_path)
+        except Exception:
+            skipped.append(key)
+    return {"restored": restored, "skipped": skipped}
+
+def _save_preset_configs(profile_id: str, preset_id: str, snapshot: dict):
+    """Save config snapshot to disk."""
+    profile_dir = PRESET_CONFIGS_DIR / profile_id
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    cfg_file = profile_dir / f"{preset_id}.json"
+    with open(cfg_file, "w") as f:
+        json.dump(snapshot, f)
+
+def _load_preset_configs(profile_id: str, preset_id: str) -> dict | None:
+    """Load config snapshot from disk."""
+    cfg_file = PRESET_CONFIGS_DIR / profile_id / f"{preset_id}.json"
+    if cfg_file.exists():
+        try:
+            with open(cfg_file) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return None
+
+def _delete_preset_configs(profile_id: str, preset_id: str):
+    """Delete config snapshot from disk."""
+    cfg_file = PRESET_CONFIGS_DIR / profile_id / f"{preset_id}.json"
+    cfg_file.unlink(missing_ok=True)
+
 # ── API Routes ────────────────────────────────────────────────────────────────
 
 @app.get("/api/config")
@@ -1010,10 +1100,17 @@ def save_preset(profile: str, req: PresetSaveRequest):
     preset_id = req.label.lower().replace(" ", "-")
     presets = load_presets()
     if profile not in presets: presets[profile] = {}
+    config_count = 0
+    if req.include_configs:
+        snapshot = _snapshot_config_files(profile)
+        _save_preset_configs(profile, preset_id, snapshot)
+        config_count = len(snapshot)
     presets[profile][preset_id] = {
         "label": req.label, "mods": mod_states,
         "mod_count": len(mod_states),
         "enabled_count": sum(1 for v in mod_states.values() if v),
+        "has_configs": req.include_configs,
+        "config_count": config_count,
         "created": datetime.now().isoformat(),
         "updated": datetime.now().isoformat(),
     }
@@ -1029,9 +1126,16 @@ def update_preset(profile: str, preset_id: str):
         raise HTTPException(status_code=404, detail="Preset not found")
     mods = scan_all_mods(profile)
     mod_states = {m["name"]: m["enabled"] for m in mods}
+    has_configs = presets[profile][preset_id].get("has_configs", False)
+    config_count = 0
+    if has_configs:
+        snapshot = _snapshot_config_files(profile)
+        _save_preset_configs(profile, preset_id, snapshot)
+        config_count = len(snapshot)
     presets[profile][preset_id].update({
         "mods": mod_states, "mod_count": len(mod_states),
         "enabled_count": sum(1 for v in mod_states.values() if v),
+        "config_count": config_count,
         "updated": datetime.now().isoformat(),
     })
     save_presets(presets)
@@ -1046,8 +1150,15 @@ def load_preset(profile: str, preset_id: str):
         raise HTTPException(status_code=404, detail="Preset not found")
     preset = presets[profile][preset_id]
     moved = apply_preset(profile, preset)
+    config_result = {"restored": [], "skipped": []}
+    if preset.get("has_configs"):
+        snapshot = _load_preset_configs(profile, preset_id)
+        if snapshot:
+            config_result = _restore_config_files(profile, snapshot)
     return {"ok": True, "preset": preset["label"],
-            "enabled": moved["enabled"], "disabled": moved["disabled"]}
+            "enabled": moved["enabled"], "disabled": moved["disabled"],
+            "configs_restored": len(config_result["restored"]),
+            "configs_skipped": len(config_result["skipped"])}
 
 @app.delete("/api/presets/{profile}/{preset_id}")
 def delete_preset(profile: str, preset_id: str):
@@ -1055,6 +1166,7 @@ def delete_preset(profile: str, preset_id: str):
     if profile in presets and preset_id in presets[profile]:
         del presets[profile][preset_id]
         save_presets(presets)
+    _delete_preset_configs(profile, preset_id)
     return {"ok": True}
 
 # ── Config File Editor ─────────────────────────────────────────────────────────
