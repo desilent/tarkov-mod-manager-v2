@@ -770,7 +770,89 @@ function toast(msg,type='info') { const ic={success:'✓',error:'✕',info:'◈'
 // ── Auth ──
 async function init() { startClock(); const ok=await checkAuth(); if(!ok) return; await bootApp(); }
 async function checkAuth() { try { const r=await fetch(`${API}/api/auth/check`); const d=await r.json(); if(!d.auth_enabled) { document.getElementById('loginOverlay').classList.add('hidden'); return true; } if(d.authenticated) { document.getElementById('loginOverlay').classList.add('hidden'); document.getElementById('logoutBtn').style.display=''; return true; } document.getElementById('loginOverlay').classList.remove('hidden'); setTimeout(()=>document.getElementById('loginPassword').focus(),100); return false; } catch { document.getElementById('loginOverlay').classList.add('hidden'); return true; } }
-async function bootApp() { await checkHealth(); await loadConfig(); startContainerPolling(); }
+async function bootApp() { await checkHealth(); await loadConfig(); initWebSocket(); }
+
+// ── WebSocket Live Reload ──
+const wsState = { socket: null, connected: false, reconnectTimer: null, reconnectDelay: 1000, fallbackMode: false, pingTimer: null };
+
+function initWebSocket(){
+  startContainerPolling();
+  _wsConnect();
+}
+
+function _wsConnect(){
+  if(wsState.socket&&(wsState.socket.readyState===WebSocket.OPEN||wsState.socket.readyState===WebSocket.CONNECTING))return;
+  try{
+    const proto=location.protocol==='https:'?'wss:':'ws:';
+    wsState.socket=new WebSocket(`${proto}//${location.host}/ws`);
+    wsState.socket.onopen=_wsOnOpen;
+    wsState.socket.onmessage=_wsOnMessage;
+    wsState.socket.onclose=_wsOnClose;
+    wsState.socket.onerror=()=>{};
+  }catch(e){ _wsFallback(); }
+}
+
+function _wsOnOpen(){
+  wsState.connected=true;
+  wsState.reconnectDelay=1000;
+  wsState.fallbackMode=false;
+  if(state.containerPollTimer){clearInterval(state.containerPollTimer);state.containerPollTimer=null;}
+  stopLogsPolling();
+  if(state.currentView==='logs'&&logsState.activeContainer){
+    wsSend({type:'subscribe_logs',profile:logsState.activeContainer});
+  }
+  wsState.pingTimer=setInterval(()=>wsSend({type:'ping'}),30000);
+  document.getElementById('apiDot').className='status-dot online';
+  document.getElementById('apiStatus').textContent='LIVE';
+}
+
+function _wsOnMessage(e){
+  try{
+    const msg=JSON.parse(e.data);
+    if(msg.type==='containers'){
+      state.containers=msg.data;
+      updateContainerMapFE();
+      renderContainerBar();
+      renderLockBanner();
+      renderSidebar();
+      if(state.currentView==='presets'){renderPresetsToolbar();renderPresets();}
+      if(state.currentView==='config'){renderConfigLiveBanner();}
+      if(state.currentView==='logs'){renderLogsTabs();}
+    }else if(msg.type==='logs'){
+      if(state.currentView==='logs'&&msg.profile===logsState.activeContainer){
+        logsState.rawText=msg.data;
+        renderLogsOutput(msg.data);
+      }
+    }
+  }catch(err){}
+}
+
+function _wsOnClose(e){
+  wsState.connected=false;
+  if(wsState.pingTimer){clearInterval(wsState.pingTimer);wsState.pingTimer=null;}
+  if(e.code===4001)return;
+  wsState.reconnectDelay=Math.min(wsState.reconnectDelay*1.5,15000);
+  wsState.reconnectTimer=setTimeout(_wsConnect,wsState.reconnectDelay);
+  _wsFallback();
+}
+
+function _wsFallback(){
+  if(wsState.fallbackMode)return;
+  wsState.fallbackMode=true;
+  startContainerPolling();
+  if(state.currentView==='logs'&&logsState.autoRefresh)startLogsPolling();
+  document.getElementById('apiDot').className='status-dot online';
+  document.getElementById('apiStatus').textContent='ONLINE';
+}
+
+function wsSend(msg){
+  if(wsState.socket&&wsState.socket.readyState===WebSocket.OPEN){
+    wsState.socket.send(JSON.stringify(msg));
+  }
+}
+
+// ── Container Polling (HTTP fallback) ──
+function startContainerPolling(){if(state.containerPollTimer)return;fetchContainerStatuses();state.containerPollTimer=setInterval(fetchContainerStatuses,5000);}
 async function doLogin() { const pw=document.getElementById('loginPassword').value; const btn=document.getElementById('loginBtn'); const err=document.getElementById('loginError'); if(!pw){err.textContent='ENTER PASSWORD';return;} btn.disabled=true;err.textContent=''; try { const r=await fetch(`${API}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})}); if(!r.ok){const d=await r.json();err.textContent=(d.detail||'FAILED').toUpperCase();document.getElementById('loginPassword').value='';document.getElementById('loginPassword').focus();return;} document.getElementById('loginOverlay').classList.add('hidden'); document.getElementById('logoutBtn').style.display=''; document.getElementById('loginPassword').value=''; await bootApp(); } catch{err.textContent='CONNECTION FAILED';} finally{btn.disabled=false;} }
 async function doLogout() { try{await fetch(`${API}/api/auth/logout`,{method:'POST'});}catch{} document.getElementById('loginOverlay').classList.remove('hidden'); document.getElementById('logoutBtn').style.display='none'; }
 const _origFetch=window.fetch; window.fetch=async function(...args){const r=await _origFetch.apply(this,args);if(r.status===401){const u=typeof args[0]==='string'?args[0]:args[0]?.url||'';if(!u.includes('/api/auth/')){document.getElementById('loginOverlay').classList.remove('hidden');document.getElementById('logoutBtn').style.display='none';}}return r;};
@@ -781,7 +863,6 @@ function toggleSidebar(){document.getElementById('sidebar').classList.toggle('op
 function closeSidebar(){document.getElementById('sidebar').classList.remove('open');document.getElementById('sidebarBackdrop').classList.remove('open');}
 
 // ── Containers ──
-function startContainerPolling(){fetchContainerStatuses();state.containerPollTimer=setInterval(fetchContainerStatuses,5000);}
 const CONTAINER_MAP_FE={};
 function updateContainerMapFE(){Object.entries(state.containers).forEach(([pid,c])=>{if(c.name)CONTAINER_MAP_FE[pid]=c.name;else delete CONTAINER_MAP_FE[pid];});}
 async function fetchContainerStatuses(){try{const r=await fetch(`${API}/api/containers`);if(!r.ok)return;state.containers=await r.json();updateContainerMapFE();renderContainerBar();renderLockBanner();renderSidebar();if(state.currentView==='presets'){renderPresetsToolbar();renderPresets();}if(state.currentView==='config'){renderConfigLiveBanner();}if(state.currentView==='logs'){renderLogsTabs();}}catch{}}
@@ -789,8 +870,8 @@ function isProfileLocked(pid){const c=state.containers[pid];return c&&c.availabl
 function renderContainerBar(){/* container controls moved to sidebar and logs tab */}
 function renderLockBanner(){const slot=document.getElementById('lockBannerSlot');const ib=document.getElementById('installBtn');if(!state.activeProfile){slot.innerHTML='';if(ib)ib.disabled=true;return;}const locked=isProfileLocked(state.activeProfile);if(ib)ib.disabled=locked;if(!locked){slot.innerHTML='';return;}const l=state.profiles[state.activeProfile]?.label||state.activeProfile;slot.innerHTML=`<div class="lock-banner"><span class="lock-banner-icon">🔒</span><span><strong>${esc(l)}</strong> container is RUNNING — mod changes locked</span><button class="lock-banner-stop" onclick="containerAction('${esc(state.activeProfile)}','stop')">■ STOP</button></div>`;}
 async function containerAction(pid,action){const l=state.profiles[pid]?.label||pid;if(action==='stop'){showGenericConfirm('Stop Container',`Stop <strong>${esc(l)}</strong>?`,'This will shut down the container. Mod changes will be unlocked.','■ STOP',()=>{closeModal('genericConfirmModal');doContainerAction(pid,action);});return;}doContainerAction(pid,action);}
-async function doContainerAction(pid,action){const l=state.profiles[pid]?.label||pid;toast(`${action==='stop'?'Stopping':'Starting'} ${l}...`,'info');try{const r=await fetch(`${API}/api/containers/${pid}/${action}`,{method:'POST'});if(!r.ok){const d=await r.json();throw new Error(d.detail);}toast(`${l} ${action==='stop'?'stopped':'started'}`,'success');setTimeout(fetchContainerStatuses,800);setTimeout(fetchContainerStatuses,2500);}catch(e){toast(e.message||`${action} failed`,'error');}}
-async function restartContainer(pid){const l=state.profiles[pid]?.label||pid;toast(`Restarting ${l}...`,'info');try{await fetch(`${API}/api/containers/${pid}/stop`,{method:'POST'});await new Promise(r=>setTimeout(r,1500));await fetch(`${API}/api/containers/${pid}/start`,{method:'POST'});toast(`${l} restarted`,'success');setTimeout(fetchContainerStatuses,800);setTimeout(fetchContainerStatuses,3000);}catch(e){toast(e.message||'Restart failed','error');}}
+async function doContainerAction(pid,action){const l=state.profiles[pid]?.label||pid;toast(`${action==='stop'?'Stopping':'Starting'} ${l}...`,'info');try{const r=await fetch(`${API}/api/containers/${pid}/${action}`,{method:'POST'});if(!r.ok){const d=await r.json();throw new Error(d.detail);}toast(`${l} ${action==='stop'?'stopped':'started'}`,'success');if(!wsState.connected){setTimeout(fetchContainerStatuses,800);setTimeout(fetchContainerStatuses,2500);}}catch(e){toast(e.message||`${action} failed`,'error');}}
+async function restartContainer(pid){const l=state.profiles[pid]?.label||pid;toast(`Restarting ${l}...`,'info');try{await fetch(`${API}/api/containers/${pid}/stop`,{method:'POST'});await new Promise(r=>setTimeout(r,1500));await fetch(`${API}/api/containers/${pid}/start`,{method:'POST'});toast(`${l} restarted`,'success');if(!wsState.connected){setTimeout(fetchContainerStatuses,800);setTimeout(fetchContainerStatuses,3000);}}catch(e){toast(e.message||'Restart failed','error');}}
 function showGenericConfirm(title,msg,detail,btnLabel,onConfirm){document.getElementById('genericConfirmTitle').textContent=title;document.getElementById('genericConfirmMsg').innerHTML=msg;document.getElementById('genericConfirmDetail').innerHTML=detail||'';const btn=document.getElementById('genericConfirmBtn');btn.textContent=btnLabel||'Confirm';btn.onclick=onConfirm;openModal('genericConfirmModal');}
 
 // ── Health & Config ──
@@ -908,8 +989,13 @@ function selectLogsContainer(pid){
   document.getElementById('logsSearchInput').value='';
   logsState.filterQuery='';
   renderLogsTabs();
-  if(logsState.autoRefresh) startLogsPolling();
-  else fetchLogsView();
+  if(wsState.connected){
+    wsSend({type:'subscribe_logs',profile:pid});
+  }else if(logsState.autoRefresh){
+    startLogsPolling();
+  }else{
+    fetchLogsView();
+  }
 }
 
 function startLogsPolling(){
@@ -928,8 +1014,16 @@ function toggleLogsViewAuto(){
   btn.textContent=`AUTO: ${logsState.autoRefresh?'ON':'OFF'}`;
   btn.classList.toggle('btn-primary',logsState.autoRefresh);
   btn.classList.toggle('btn-ghost',!logsState.autoRefresh);
-  if(logsState.autoRefresh) startLogsPolling();
-  else stopLogsPolling();
+  if(logsState.autoRefresh){
+    if(wsState.connected&&logsState.activeContainer){
+      wsSend({type:'subscribe_logs',profile:logsState.activeContainer});
+    }else{
+      startLogsPolling();
+    }
+  }else{
+    if(wsState.connected)wsSend({type:'unsubscribe_logs'});
+    stopLogsPolling();
+  }
 }
 
 function clearLogsViewDisplay(){
@@ -1003,7 +1097,7 @@ const ANSI_COLORS={'30':'ansi-black','31':'ansi-red','32':'ansi-green','33':'ans
 function ansiToHtml(text){const e=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');let r='',o=0;const parts=e.split(/\x1b\[([0-9;]*)m/);for(let i=0;i<parts.length;i++){if(i%2===0){r+=parts[i];}else{while(o>0){r+='</span>';o--;}const cls=[];for(const c of parts[i].split(';')){if(c==='1')cls.push('ansi-bold');else if(c==='2')cls.push('ansi-dim');else if(ANSI_COLORS[c])cls.push(ANSI_COLORS[c]);}if(cls.length){r+=`<span class="${cls.join(' ')}">`;o++;}}}while(o>0){r+='</span>';o--;}return r;}
 
 // ── View switch ──
-function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('viewLogs').style.display=v==='logs'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');document.getElementById('navLogs').classList.toggle('active',v==='logs');if(v==='presets'){renderPresetsToolbar();refreshPresets();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();}else if(v==='logs'){renderLogsTabs();if(logsState.autoRefresh)startLogsPolling();}if(v!=='logs')stopLogsPolling();}
+function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('viewLogs').style.display=v==='logs'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');document.getElementById('navLogs').classList.toggle('active',v==='logs');if(v==='presets'){renderPresetsToolbar();refreshPresets();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();}else if(v==='logs'){renderLogsTabs();if(wsState.connected&&logsState.activeContainer){wsSend({type:'subscribe_logs',profile:logsState.activeContainer});}else if(logsState.autoRefresh){startLogsPolling();}}if(v!=='logs'){if(wsState.connected)wsSend({type:'unsubscribe_logs'});stopLogsPolling();}}
 
 // ── Config Editor ──
 const configState = { sources: [], openFile: null, originalContent: '', modified: false, openSources: {}, openFolders: {}, fileType: 'text' };

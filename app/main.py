@@ -1295,6 +1295,149 @@ def auth_logout(request: Request, response: Response):
 def health():
     return {"status": "ok", "version": "3.0.0", "data_dir": str(DATA_DIR)}
 
+# ── WebSocket Live Reload ─────────────────────────────────────────────────────
+from fastapi import WebSocket, WebSocketDisconnect
+
+_ws_clients: set[WebSocket] = set()
+_ws_log_subs: dict[WebSocket, str] = {}  # ws -> profile_id they want logs for
+_ws_last_containers: str = ""  # JSON string of last broadcast, for dedup
+
+async def _ws_broadcast(msg: dict, exclude: WebSocket | None = None):
+    """Send a message to all connected WebSocket clients."""
+    payload = json.dumps(msg)
+    dead = []
+    for ws in _ws_clients:
+        if ws is exclude:
+            continue
+        try:
+            await ws.send_text(payload)
+        except Exception:
+            dead.append(ws)
+    for ws in dead:
+        _ws_clients.discard(ws)
+        _ws_log_subs.pop(ws, None)
+
+async def _ws_send(ws: WebSocket, msg: dict):
+    """Send a message to a single client."""
+    try:
+        await ws.send_text(json.dumps(msg))
+    except Exception:
+        _ws_clients.discard(ws)
+        _ws_log_subs.pop(ws, None)
+
+async def _ws_container_loop():
+    """Background task: poll container statuses and broadcast changes."""
+    global _ws_last_containers
+    while True:
+        await asyncio.sleep(4)
+        if not _ws_clients:
+            continue
+        try:
+            statuses = {}
+            for profile_id, container_name in CONTAINER_MAP.items():
+                statuses[profile_id] = get_container_status(container_name)
+            payload = json.dumps(statuses, sort_keys=True)
+            if payload != _ws_last_containers:
+                _ws_last_containers = payload
+                await _ws_broadcast({"type": "containers", "data": statuses})
+        except Exception:
+            pass
+
+async def _ws_logs_loop():
+    """Background task: stream logs to subscribed clients."""
+    last_logs: dict[str, str] = {}  # profile -> last log hash
+    while True:
+        await asyncio.sleep(2)
+        # Group subscribers by profile
+        subs_by_profile: dict[str, list[WebSocket]] = {}
+        for ws, pid in list(_ws_log_subs.items()):
+            if ws in _ws_clients:
+                subs_by_profile.setdefault(pid, []).append(ws)
+            else:
+                _ws_log_subs.pop(ws, None)
+        for pid, clients in subs_by_profile.items():
+            container = CONTAINER_MAP.get(pid, "")
+            if not container:
+                continue
+            try:
+                params = "stdout=1&stderr=1&tail=500&timestamps=1"
+                raw = _docker_request_raw("GET", f"/containers/{container}/logs?{params}")
+                text = _strip_docker_log_headers(raw)
+                # Dedup: only send if logs changed
+                log_hash = str(hash(text))
+                if log_hash == last_logs.get(pid):
+                    continue
+                last_logs[pid] = log_hash
+                msg = json.dumps({"type": "logs", "profile": pid, "data": text})
+                dead = []
+                for ws in clients:
+                    try:
+                        await ws.send_text(msg)
+                    except Exception:
+                        dead.append(ws)
+                for ws in dead:
+                    _ws_clients.discard(ws)
+                    _ws_log_subs.pop(ws, None)
+            except Exception:
+                pass
+
+@app.on_event("startup")
+async def _start_ws_loops():
+    asyncio.create_task(_ws_container_loop())
+    asyncio.create_task(_ws_logs_loop())
+
+@app.websocket("/ws")
+async def websocket_endpoint(ws: WebSocket):
+    # Auth check for WebSocket
+    if AUTH_ENABLED:
+        token = ws.cookies.get("rmm_session")
+        if not _validate_session(token):
+            await ws.close(code=4001, reason="Not authenticated")
+            return
+    await ws.accept()
+    _ws_clients.add(ws)
+    # Send initial container statuses immediately
+    try:
+        statuses = {}
+        for profile_id, container_name in CONTAINER_MAP.items():
+            statuses[profile_id] = get_container_status(container_name)
+        await _ws_send(ws, {"type": "containers", "data": statuses})
+    except Exception:
+        pass
+    try:
+        while True:
+            raw = await ws.receive_text()
+            try:
+                msg = json.loads(raw)
+                msg_type = msg.get("type")
+                if msg_type == "subscribe_logs":
+                    pid = msg.get("profile", "")
+                    if pid:
+                        _ws_log_subs[ws] = pid
+                        # Send current logs immediately
+                        container = CONTAINER_MAP.get(pid, "")
+                        if container:
+                            try:
+                                params = "stdout=1&stderr=1&tail=500&timestamps=1"
+                                log_raw = _docker_request_raw("GET", f"/containers/{container}/logs?{params}")
+                                text = _strip_docker_log_headers(log_raw)
+                                await _ws_send(ws, {"type": "logs", "profile": pid, "data": text})
+                            except Exception:
+                                pass
+                elif msg_type == "unsubscribe_logs":
+                    _ws_log_subs.pop(ws, None)
+                elif msg_type == "ping":
+                    await _ws_send(ws, {"type": "pong"})
+            except json.JSONDecodeError:
+                pass
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
+    finally:
+        _ws_clients.discard(ws)
+        _ws_log_subs.pop(ws, None)
+
 # ── Static / Frontend ─────────────────────────────────────────────────────────
 static_dir = Path(__file__).parent.parent / "static"
 if static_dir.exists():
