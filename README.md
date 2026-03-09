@@ -14,9 +14,10 @@ Hosted on Unraid, accessible from any browser on your network.
 | Feature | Description |
 |:---|:---|
 | **🎮 Mod Management** | Multi-profile support · Smart install (upload or URL, auto-detects server mods vs plugins) · Enable/disable without deleting · Version detection from `package.json`, DLL metadata & BepInEx attributes |
-| **🎯 Presets** | Save/load named mod configurations · Strict mode disables unlisted mods · Quick-switch between solo, co-op, testing setups |
+| **🎯 Presets** | Save/load named mod configurations · Strict mode disables unlisted mods · Optional config file snapshots bundled with presets — restore both mods and configs in one click |
 | **⚙️ Config Editor** | VS Code Dark+ themed editor · Syntax highlighting (`.cfg` `.json` `.yaml` `.xml` `.ini` `.toml`) · Find & Replace with regex · Auto-backup on save · Live container awareness |
 | **📋 Logs** | Full-height log viewer · Container sub-tabs with live status dots · Real-time filtering · ANSI color support · Auto-refresh with inline Start/Stop/Restart controls |
+| **🔌 WebSocket** | Real-time push updates for container status and log streaming · Automatic fallback to HTTP polling · Exponential backoff reconnect |
 | **🐳 Containers** | Start/Stop/Restart via Docker socket · Live status polling · Mod locking when running · Status visible across all tabs |
 | **🔐 Auth** | Optional password login · 72h sessions · Themed login screen · LAN-friendly (disabled by default) |
 
@@ -121,14 +122,16 @@ python app/main.py   # → http://localhost:7272
 
 **Mod toggling** — Disabling a mod moves it to a `__disabled__/` subfolder. Re-enabling moves it back. No files are ever deleted by toggling.
 
-**Presets (strict mode)** — Loading a preset disables any mod not listed in the preset. This ensures a clean, predictable mod set — important for FIKA where mismatched mods cause desync.
+**Presets (strict mode)** — Loading a preset disables any mod not in the preset. Optionally bundles config file snapshots — when loaded, all configs are restored from the snapshot (with `.bak` backups).
 
 **Version detection** — Reads mod versions from multiple sources in priority order:
 1. `package.json` (standard SPT server mods)
 2. JSON config files (`config`, `config.json`, `mod.json`, `manifest.json`)
-3. BepInEx `[BepInPlugin]` attribute in .NET DLLs (parses the User Strings heap for GUID + version)
+3. BepInEx `[BepInPlugin]` attribute in .NET DLLs (parses the #US heap for GUID + version)
 4. .NET `AssemblyFileVersion` / `AssemblyInformationalVersion` attributes
 5. PE `VS_FIXEDFILEINFO` version resource
+
+**WebSocket** — The UI connects via WebSocket for real-time updates. Container status changes and log lines are pushed instantly instead of polled. Falls back to HTTP polling automatically if WebSocket is unavailable.
 
 **Config editor** — Creates `.bak` backups before every save. Shows a disclaimer banner when the container is running since some changes may require a restart.
 
@@ -152,17 +155,18 @@ AUTH_PASSWORD: "your-secret-password"
 ## 🗺️ Roadmap
 
 ```
- ✅ SHIPPED                          🔧 PLANNED
- ─────────────────────────────────   ─────────────────────────────────
- ◈ Multi-profile mod management      ◇ Cross-profile mod sync
- ◈ Smart installer (upload / URL)     ◇ WebSocket live reload
- ◈ Mod presets (save / load)          ◇ SPT version compatibility
- ◈ Container management (Docker)      ◇ Forge / GitHub update checker
- ◈ Password authentication            ◇ Mod dependency resolution
- ◈ Config file editor (VS Code)       ◇ Bulk mod operations
- ◈ Container logs (full-height)       ◇ Mod backup / rollback
- ◈ Version detection (DLL parsing)
- ◈ BepInEx plugin metadata extraction
+ ✅ SHIPPED                           🔧 PLANNED
+ ──────────────────────────────────   ──────────────────────────────────
+ ◈ Multi-profile mod management       ◇ Cross-profile mod sync
+ ◈ Smart installer (upload / URL)      ◇ SPT version compatibility
+ ◈ Mod presets with config snapshots   ◇ Forge / GitHub update checker
+ ◈ Container management (Docker)       ◇ Mod dependency resolution
+ ◈ Password authentication             ◇ Bulk mod operations
+ ◈ Config file editor (VS Code)        ◇ Mod backup / rollback
+ ◈ Container logs (full-height)        ◇ Drag-and-drop mod ordering
+ ◈ Version detection (DLL parsing)     ◇ Multi-user support
+ ◈ BepInEx metadata extraction
+ ◈ WebSocket live reload
 ```
 
 ---
