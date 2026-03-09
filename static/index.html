@@ -72,7 +72,7 @@
 
   /* ── MAIN ── */
   .main { display: flex; flex-direction: column; overflow: hidden; }
-  #viewMods, #viewPresets, #viewConfig, #viewLogs { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  #viewMods, #viewPresets, #viewConfig, #viewLogs, #viewUpdates { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
   .toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
   .toolbar-title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 2px; color: var(--text-primary); text-transform: uppercase; }
   .profile-badge { padding: 3px 10px; border-radius: 3px; font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 1px; border: 1px solid; }
@@ -284,6 +284,29 @@
   .ansi-bright-cyan { color: #80fff0; } .ansi-bright-white { color: #fff; }
   .ansi-bold { font-weight: bold; } .ansi-dim { opacity: 0.6; }
 
+  /* ── UPDATES VIEW ── */
+  #viewUpdates { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  .update-row { display: grid; grid-template-columns: 28px 1fr 70px 100px 100px 110px 40px; align-items: center; gap: 0; padding: 8px 16px; border-bottom: 1px solid var(--border); font-family: 'Share Tech Mono', monospace; font-size: 12px; transition: background 0.1s; }
+  .update-row:hover { background: var(--bg-hover); }
+  .update-status { display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 2px; font-size: 10px; letter-spacing: 1px; font-weight: 600; white-space: nowrap; }
+  .update-status.up-to-date { color: var(--enabled); background: var(--enabled-dim); }
+  .update-status.update-available { color: #f0c050; background: rgba(240,192,80,0.12); }
+  .update-status.not-on-forge { color: var(--text-dim); background: var(--bg-card); }
+  .update-status.no-guid { color: var(--text-dim); background: var(--bg-card); }
+  .update-status.checking { color: var(--accent-gold); }
+  .update-icon { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; border-radius: 3px; font-size: 11px; }
+  .update-icon.up-to-date { color: var(--enabled); }
+  .update-icon.update-available { color: #f0c050; }
+  .update-icon.unmatched { color: var(--text-dim); }
+  .update-ver { font-family: 'Share Tech Mono', monospace; font-size: 12px; }
+  .update-ver-new { color: var(--enabled); font-weight: 600; }
+  .update-forge-link { color: var(--accent-gold); text-decoration: none; font-size: 11px; opacity: 0.7; transition: opacity 0.15s; }
+  .update-forge-link:hover { opacity: 1; text-decoration: underline; }
+  .update-checking-overlay { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 16px; padding: 60px 40px; color: var(--text-secondary); }
+  .update-checking-spinner { width: 28px; height: 28px; border: 2px solid var(--border-bright); border-top-color: var(--accent-gold); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .update-progress-text { font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-dim); letter-spacing: 1px; }
+
   /* ── LOGIN ── */
   .login-overlay { position: fixed; inset: 0; background: var(--bg-base); z-index: 10000; display: flex; align-items: center; justify-content: center; flex-direction: column; }
   .login-overlay.hidden { display: none; }
@@ -493,10 +516,11 @@
       <button class="view-nav-btn active" id="navMods" onclick="switchView('mods')"><span>▦</span> Mods</button>
       <button class="view-nav-btn" id="navPresets" onclick="switchView('presets')"><span>◫</span> Presets</button>
       <button class="view-nav-btn" id="navConfig" onclick="switchView('config')"><span>⚙</span> Config</button>
+      <button class="view-nav-btn" id="navUpdates" onclick="switchView('updates')"><span>⟳</span> Updates</button>
       <button class="view-nav-btn" id="navLogs" onclick="switchView('logs')"><span>▤</span> Logs</button>
     </div>
     <div class="sidebar-footer">
-      <div class="sys-info">VER: 3.0.0<br>API: <span id="apiVer">—</span></div>
+      <div class="sys-info">VER: 3.1.0<br>API: <span id="apiVer">—</span></div>
       <button class="logout-btn" id="logoutBtn" style="display:none" onclick="doLogout()">⏻ LOGOUT</button>
     </div>
   </aside>
@@ -644,6 +668,42 @@
         </div>
       </div>
     </div>
+
+    <!-- UPDATES VIEW -->
+    <div id="viewUpdates" style="display:none">
+      <div class="toolbar">
+        <div><div class="toolbar-title" id="updatesToolbarTitle">Mod Updates</div><div id="updatesBadge"></div></div>
+        <div class="toolbar-spacer"></div>
+        <div class="filter-btns">
+          <button class="filter-btn active" onclick="setUpdateFilter(this,'all')">ALL</button>
+          <button class="filter-btn" onclick="setUpdateFilter(this,'updates')">UPDATES</button>
+          <button class="filter-btn" onclick="setUpdateFilter(this,'matched')">MATCHED</button>
+          <button class="filter-btn" onclick="setUpdateFilter(this,'unmatched')">UNMATCHED</button>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="openForgeSettings()">⚿ SETTINGS</button>
+        <button class="btn btn-primary btn-sm" id="checkUpdatesBtn" onclick="checkForUpdates()" disabled>⟳ CHECK FOR UPDATES</button>
+      </div>
+      <div class="mod-list-container">
+        <div id="updatesStatusBar" style="display:none">
+          <div class="stats-bar">
+            <div class="stat-item"><span class="stat-num" id="updateStatTotal" style="color:var(--text-primary)">0</span><span class="stat-label">TOTAL</span></div>
+            <div class="stat-item"><span class="stat-num" id="updateStatMatched" style="color:var(--accent-gold)">0</span><span class="stat-label">MATCHED</span></div>
+            <div class="stat-item"><span class="stat-num" id="updateStatUpdates" style="color:var(--enabled)">0</span><span class="stat-label">UPDATES</span></div>
+            <div class="stat-item"><span class="stat-num" id="updateStatUnmatched" style="color:var(--text-dim)">0</span><span class="stat-label">UNMATCHED</span></div>
+            <div class="stat-item"><span class="stat-label" id="updateStatTime" style="color:var(--text-dim);font-size:10px"></span></div>
+          </div>
+        </div>
+        <div class="mod-header" id="updateModHeader" style="display:none"><span></span><span>MOD NAME</span><span>TYPE</span><span>INSTALLED</span><span>LATEST</span><span>STATUS</span><span></span></div>
+        <div id="updatesList">
+          <div class="empty-state">
+            <div class="big-icon">⟳</div>
+            <h3>Mod Update Checker</h3>
+            <p>Configure your Forge API key, select a container, then check for updates.</p>
+            <button class="btn btn-ghost btn-sm" style="margin-top:16px" onclick="openForgeSettings()">⚿ CONFIGURE FORGE API KEY</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 </div>
 
@@ -757,6 +817,36 @@
       <div id="loadPresetDiff" style="max-height:280px;overflow-y:auto"></div>
     </div>
     <div class="modal-footer"><button class="btn btn-ghost" onclick="closeModal('loadPresetModal')">Cancel</button><button class="btn btn-primary" id="loadPresetConfirmBtn">Load Preset</button></div>
+  </div>
+</div>
+
+<!-- FORGE SETTINGS MODAL -->
+<div class="modal-overlay" id="forgeSettingsModal">
+  <div class="modal bracket" style="width:560px">
+    <div class="modal-header"><div class="modal-title">Forge API Settings</div><button class="modal-close" onclick="closeModal('forgeSettingsModal')">✕</button></div>
+    <div class="modal-body">
+      <p style="font-size:12px;color:var(--text-secondary);line-height:1.6;margin-bottom:14px;">
+        Connect to <a href="https://forge.sp-tarkov.com" target="_blank" style="color:var(--accent-gold)">The Forge</a> to check for mod updates.
+        Generate a <strong style="color:var(--text-primary)">read-only</strong> API token at
+        <a href="https://forge.sp-tarkov.com/user/api-tokens" target="_blank" style="color:var(--accent-gold)">forge.sp-tarkov.com/user/api-tokens</a>
+      </p>
+      <div class="form-group">
+        <label class="form-label">API Token</label>
+        <div style="display:flex;gap:8px;align-items:center">
+          <input type="password" class="form-input" id="forgeApiKeyInput" placeholder="Paste your Forge API token" style="flex:1">
+          <button class="btn btn-ghost btn-sm" onclick="toggleForgeKeyVisibility()" id="forgeKeyToggle" style="white-space:nowrap;min-width:50px">SHOW</button>
+        </div>
+        <div id="forgeKeyStatus" style="font-size:11px;margin-top:6px;font-family:'Share Tech Mono',monospace;letter-spacing:0.5px"></div>
+      </div>
+      <div style="display:flex;gap:12px;margin-top:12px">
+        <button class="btn btn-ghost btn-sm" id="forgeTestBtn" onclick="testForgeKey()">⚡ TEST CONNECTION</button>
+        <button class="btn btn-ghost btn-sm" onclick="removeForgeKey()" style="color:var(--disabled)">✕ REMOVE KEY</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" onclick="closeModal('forgeSettingsModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveForgeSettings()">Save</button>
+    </div>
   </div>
 </div>
 
@@ -913,7 +1003,7 @@ else if(ctlHtml) subLine=ctlHtml;
 btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${subLine}</div>`;
 btn.onclick=e=>{if(e.target.closest('.profile-ctl-btn'))return;selectProfile(id);closeSidebar();};el.appendChild(btn);});}
 
-async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};configState.sources=[];configState.openFile=null;configState.modified=false;renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}else if(state.currentView==='config'){renderConfigToolbar();renderConfigTree();resetConfigEditor();await refreshConfigFiles();}else if(state.currentView==='logs'){renderLogsTabs();}}
+async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};configState.sources=[];configState.openFile=null;configState.modified=false;updatesState.mods=[];updatesState.summary=null;renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}else if(state.currentView==='config'){renderConfigToolbar();renderConfigTree();resetConfigEditor();await refreshConfigFiles();}else if(state.currentView==='updates'){renderUpdatesToolbar();loadCachedUpdates();}else if(state.currentView==='logs'){renderLogsTabs();}}
 function renderToolbar(){const p=state.profiles[state.activeProfile];if(!p)return;document.getElementById('toolbarTitle').textContent=p.label;document.getElementById('profileBadge').innerHTML=`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;}
 async function refreshMods(){if(!state.activeProfile)return;try{const r=await fetch(`${API}/api/mods/${state.activeProfile}`);const d=await r.json();state.mods=d.mods||[];renderMods();renderSidebar();}catch{toast('Failed to load mods','error');}}
 
@@ -1104,7 +1194,7 @@ const ANSI_COLORS={'30':'ansi-black','31':'ansi-red','32':'ansi-green','33':'ans
 function ansiToHtml(text){const e=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');let r='',o=0;const parts=e.split(/\x1b\[([0-9;]*)m/);for(let i=0;i<parts.length;i++){if(i%2===0){r+=parts[i];}else{while(o>0){r+='</span>';o--;}const cls=[];for(const c of parts[i].split(';')){if(c==='1')cls.push('ansi-bold');else if(c==='2')cls.push('ansi-dim');else if(ANSI_COLORS[c])cls.push(ANSI_COLORS[c]);}if(cls.length){r+=`<span class="${cls.join(' ')}">`;o++;}}}while(o>0){r+='</span>';o--;}return r;}
 
 // ── View switch ──
-function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('viewLogs').style.display=v==='logs'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');document.getElementById('navLogs').classList.toggle('active',v==='logs');if(v==='presets'){renderPresetsToolbar();refreshPresets();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();}else if(v==='logs'){renderLogsTabs();if(wsState.connected&&logsState.activeContainer){wsSend({type:'subscribe_logs',profile:logsState.activeContainer});}else if(logsState.autoRefresh){startLogsPolling();}}if(v!=='logs'){if(wsState.connected)wsSend({type:'unsubscribe_logs'});stopLogsPolling();}}
+function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('viewUpdates').style.display=v==='updates'?'':'none';document.getElementById('viewLogs').style.display=v==='logs'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');document.getElementById('navUpdates').classList.toggle('active',v==='updates');document.getElementById('navLogs').classList.toggle('active',v==='logs');if(v==='presets'){renderPresetsToolbar();refreshPresets();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();}else if(v==='updates'){renderUpdatesToolbar();loadCachedUpdates();}else if(v==='logs'){renderLogsTabs();if(wsState.connected&&logsState.activeContainer){wsSend({type:'subscribe_logs',profile:logsState.activeContainer});}else if(logsState.autoRefresh){startLogsPolling();}}if(v!=='logs'){if(wsState.connected)wsSend({type:'unsubscribe_logs'});stopLogsPolling();}}
 
 // ── Config Editor ──
 const configState = { sources: [], openFile: null, originalContent: '', modified: false, openSources: {}, openFolders: {}, fileType: 'text' };
@@ -1915,6 +2005,224 @@ const diff=document.getElementById('loadPresetDiff');let h='';if(p.has_configs){
 async function executeLoadPreset(id){const btn=document.getElementById('loadPresetConfirmBtn');btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span> Loading...';try{const r=await fetch(`${API}/api/presets/${state.activeProfile}/${id}/load`,{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.detail);const modChanges=(d.enabled?.length||0)+(d.disabled?.length||0);const cfgMsg=d.configs_restored?`, ${d.configs_restored} config(s) restored`:'';toast(`Preset "${d.preset}" loaded — ${modChanges} mod change(s)${cfgMsg}`,'success');closeModal('loadPresetModal');await refreshMods();await refreshPresets();}catch(e){toast(e.message||'Load failed','error');}finally{btn.disabled=false;btn.innerHTML='Load Preset';}}
 async function updatePreset(id){if(!state.activeProfile||isProfileLocked(state.activeProfile))return;const p=state.presets[id];if(!p)return;showGenericConfirm('Update Preset',`Overwrite <strong>${esc(p.label)}</strong>?`,'This will replace the saved mod states with your current configuration.','↻ UPDATE',async()=>{closeModal('genericConfirmModal');try{const r=await fetch(`${API}/api/presets/${state.activeProfile}/${id}`,{method:'PUT'});if(!r.ok)throw new Error((await r.json()).detail);toast(`"${p.label}" updated`,'success');await refreshPresets();}catch(e){toast(e.message||'Update failed','error');}});}
 async function confirmDeletePreset(id){const p=state.presets[id];if(!p)return;showGenericConfirm('Delete Preset',`Delete <strong>${esc(p.label)}</strong>?`,'This does not affect your mods on disk.','Delete',async()=>{closeModal('genericConfirmModal');try{await fetch(`${API}/api/presets/${state.activeProfile}/${id}`,{method:'DELETE'});toast(`"${p.label}" deleted`,'success');await refreshPresets();}catch(e){toast(e.message||'Delete failed','error');}});}
+
+// ── Forge Updates ────────────────────────────────────────────────────────────
+const updatesState = { mods: [], summary: null, filter: 'all', checking: false, forgeHasKey: false };
+
+function renderUpdatesToolbar(){
+  const p=state.profiles[state.activeProfile];
+  document.getElementById('updatesToolbarTitle').textContent=p?p.label+' — Updates':'Mod Updates';
+  document.getElementById('updatesBadge').innerHTML=p?`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`:'';
+  document.getElementById('checkUpdatesBtn').disabled=!state.activeProfile||updatesState.checking;
+}
+
+async function loadCachedUpdates(){
+  if(!state.activeProfile){renderUpdatesList();return;}
+  try{
+    const r=await fetch(`${API}/api/forge/cache/${state.activeProfile}`);
+    const d=await r.json();
+    if(d.cached){
+      updatesState.summary=d.summary;
+      updatesState.mods=d.mods||[];
+      renderUpdatesStats();
+      renderUpdatesList();
+    }else{renderUpdatesList();}
+  }catch{renderUpdatesList();}
+  // Also check if we have a key
+  try{
+    const r=await fetch(`${API}/api/forge/settings`);
+    const d=await r.json();
+    updatesState.forgeHasKey=d.has_key;
+  }catch{}
+}
+
+async function checkForUpdates(){
+  if(!state.activeProfile||updatesState.checking)return;
+  updatesState.checking=true;
+  document.getElementById('checkUpdatesBtn').disabled=true;
+  document.getElementById('checkUpdatesBtn').innerHTML='<span class="loading-spinner"></span> CHECKING...';
+  document.getElementById('updatesList').innerHTML=`<div class="update-checking-overlay"><div class="update-checking-spinner"></div><div class="update-progress-text">Checking mods against The Forge...</div><div class="update-progress-text" style="font-size:11px;color:var(--text-dim)">This may take a moment for many mods</div></div>`;
+  try{
+    const r=await fetch(`${API}/api/forge/check-updates/${state.activeProfile}`);
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail);
+    updatesState.summary=d.summary;
+    updatesState.mods=d.mods||[];
+    renderUpdatesStats();
+    renderUpdatesList();
+    const u=d.summary.updates_available;
+    toast(u>0?`${u} update(s) available!`:'All mods up to date',u>0?'info':'success');
+  }catch(e){
+    toast(e.message||'Update check failed','error');
+    renderUpdatesList();
+  }finally{
+    updatesState.checking=false;
+    document.getElementById('checkUpdatesBtn').disabled=false;
+    document.getElementById('checkUpdatesBtn').innerHTML='⟳ CHECK FOR UPDATES';
+  }
+}
+
+function setUpdateFilter(btn,f){
+  updatesState.filter=f;
+  document.querySelectorAll('#viewUpdates .filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  renderUpdatesList();
+}
+
+function renderUpdatesStats(){
+  const s=updatesState.summary;
+  if(!s){document.getElementById('updatesStatusBar').style.display='none';return;}
+  document.getElementById('updatesStatusBar').style.display='';
+  document.getElementById('updateStatTotal').textContent=s.total_mods;
+  document.getElementById('updateStatMatched').textContent=s.forge_matched;
+  document.getElementById('updateStatUpdates').textContent=s.updates_available;
+  document.getElementById('updateStatUnmatched').textContent=s.unmatched;
+  if(s.checked_at){
+    const d=new Date(s.checked_at);
+    document.getElementById('updateStatTime').textContent='Checked: '+d.toLocaleString('en-GB',{hour12:false,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
+  }
+}
+
+function renderUpdatesList(){
+  const el=document.getElementById('updatesList');
+  const header=document.getElementById('updateModHeader');
+  if(!state.activeProfile){
+    header.style.display='none';
+    el.innerHTML='<div class="empty-state"><div class="big-icon">⟳</div><h3>No Container Selected</h3><p>Choose a container from the sidebar to check for updates.</p></div>';
+    return;
+  }
+  if(!updatesState.mods.length){
+    header.style.display='none';
+    if(!updatesState.forgeHasKey){
+      el.innerHTML='<div class="empty-state"><div class="big-icon">⚿</div><h3>Forge API Key Required</h3><p>Connect your Forge account to check for mod updates.</p><button class="btn btn-ghost btn-sm" style="margin-top:16px" onclick="openForgeSettings()">⚿ CONFIGURE API KEY</button></div>';
+    }else{
+      el.innerHTML='<div class="empty-state"><div class="big-icon">⟳</div><h3>No Update Data</h3><p>Click <strong>CHECK FOR UPDATES</strong> to scan your mods against The Forge.</p></div>';
+    }
+    return;
+  }
+  const f=updatesState.filter;
+  const mods=updatesState.mods.filter(m=>{
+    if(f==='updates')return m.update_available;
+    if(f==='matched')return m.status==='up_to_date'||m.status==='update_available';
+    if(f==='unmatched')return m.status==='not_on_forge'||m.status==='no_guid';
+    return true;
+  });
+  header.style.display='';
+  if(!mods.length){
+    el.innerHTML='<div class="empty-state" style="padding:40px"><p style="color:var(--text-dim)">No mods match this filter.</p></div>';
+    return;
+  }
+  let html='';
+  // Sort: updates first, then matched, then unmatched
+  mods.sort((a,b)=>{
+    const order={update_available:0,up_to_date:1,not_on_forge:2,no_guid:3,no_versions:2};
+    return (order[a.status]||9)-(order[b.status]||9);
+  });
+  for(const m of mods){
+    const icon = m.update_available?'<div class="update-icon update-available">⬆</div>':
+                 m.status==='up_to_date'?'<div class="update-icon up-to-date">✓</div>':
+                 '<div class="update-icon unmatched">—</div>';
+    const statusCls = m.update_available?'update-available':
+                      m.status==='up_to_date'?'up-to-date':
+                      m.status==='not_on_forge'?'not-on-forge':'no-guid';
+    const statusLabel = m.update_available?'UPDATE':
+                        m.status==='up_to_date'?'UP TO DATE':
+                        m.status==='not_on_forge'?'NOT ON FORGE':
+                        m.status==='no_guid'?'NO GUID':'—';
+    const installed = m.installed_version||'—';
+    const latest = m.latest_version?(m.update_available?`<span class="update-ver-new">${esc(m.latest_version)}</span>`:esc(m.latest_version)):'—';
+    const forgeLink = m.forge_url?`<a href="${esc(m.forge_url)}" target="_blank" class="update-forge-link" title="View on Forge">↗</a>`:'';
+    html+=`<div class="update-row">
+      ${icon}
+      <div style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
+        <span style="color:var(--text-primary)">${esc(m.name)}</span>
+        ${m.forge_match&&m.forge_match!==m.name?`<span style="color:var(--text-dim);font-size:10px;margin-left:6px">${esc(m.forge_match)}</span>`:''}
+      </div>
+      <span class="folder-badge ${m.folder}">${m.folder==='mods'?'MOD':'PLUGIN'}</span>
+      <span class="update-ver" style="color:var(--text-secondary)">${esc(installed)}</span>
+      <span class="update-ver">${latest}</span>
+      <span class="update-status ${statusCls}">${statusLabel}</span>
+      ${forgeLink}
+    </div>`;
+  }
+  el.innerHTML=html;
+}
+
+// ── Forge Settings ──
+async function openForgeSettings(){
+  try{
+    const r=await fetch(`${API}/api/forge/settings`);
+    const d=await r.json();
+    document.getElementById('forgeApiKeyInput').value='';
+    document.getElementById('forgeApiKeyInput').placeholder=d.has_key?'••• key saved (enter new to replace)':'Paste your Forge API token';
+    document.getElementById('forgeKeyStatus').innerHTML=d.has_key?`<span style="color:var(--enabled)">✓ API key configured</span> <span style="color:var(--text-dim)">(${d.api_key_masked})</span>`:'<span style="color:var(--text-dim)">No API key configured</span>';
+    updatesState.forgeHasKey=d.has_key;
+  }catch{
+    document.getElementById('forgeKeyStatus').innerHTML='<span style="color:var(--disabled)">Failed to load settings</span>';
+  }
+  openModal('forgeSettingsModal');
+}
+
+function toggleForgeKeyVisibility(){
+  const inp=document.getElementById('forgeApiKeyInput');
+  const btn=document.getElementById('forgeKeyToggle');
+  if(inp.type==='password'){inp.type='text';btn.textContent='HIDE';}
+  else{inp.type='password';btn.textContent='SHOW';}
+}
+
+async function saveForgeSettings(){
+  const key=document.getElementById('forgeApiKeyInput').value.trim();
+  try{
+    const body={api_key:key,auto_check:false,check_interval_hours:6};
+    const r=await fetch(`${API}/api/forge/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok)throw new Error((await r.json()).detail);
+    updatesState.forgeHasKey=true;
+    closeModal('forgeSettingsModal');
+    toast(key?'Forge API key saved':'Settings saved','success');
+    if(state.currentView==='updates')renderUpdatesList();
+  }catch(e){toast(e.message||'Save failed','error');}
+}
+
+async function testForgeKey(){
+  const btn=document.getElementById('forgeTestBtn');
+  const status=document.getElementById('forgeKeyStatus');
+  btn.disabled=true;btn.innerHTML='<span class="loading-spinner"></span> Testing...';
+  // If user typed a new key, save it first
+  const newKey=document.getElementById('forgeApiKeyInput').value.trim();
+  if(newKey){
+    try{
+      await fetch(`${API}/api/forge/settings`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:newKey,auto_check:false,check_interval_hours:6})});
+    }catch{}
+  }
+  try{
+    const r=await fetch(`${API}/api/forge/settings/test`,{method:'POST'});
+    const d=await r.json();
+    if(!r.ok)throw new Error(d.detail);
+    status.innerHTML=`<span style="color:var(--enabled)">✓ Connected as <strong>${esc(d.user)}</strong></span>`;
+    updatesState.forgeHasKey=true;
+    toast(`Connected to Forge as ${d.user}`,'success');
+  }catch(e){
+    status.innerHTML=`<span style="color:var(--disabled)">✕ ${esc(e.message||'Connection failed')}</span>`;
+    toast(e.message||'Test failed','error');
+  }finally{btn.disabled=false;btn.innerHTML='⚡ TEST CONNECTION';}
+}
+
+async function removeForgeKey(){
+  showGenericConfirm('Remove API Key','Remove your Forge API key?','Update checking will be disabled until a new key is added.','Remove',async()=>{
+    closeModal('genericConfirmModal');
+    try{
+      await fetch(`${API}/api/forge/settings/key`,{method:'DELETE'});
+      updatesState.forgeHasKey=false;
+      updatesState.mods=[];updatesState.summary=null;
+      document.getElementById('forgeApiKeyInput').value='';
+      document.getElementById('forgeApiKeyInput').placeholder='Paste your Forge API token';
+      document.getElementById('forgeKeyStatus').innerHTML='<span style="color:var(--text-dim)">No API key configured</span>';
+      toast('API key removed','success');
+      closeModal('forgeSettingsModal');
+      if(state.currentView==='updates'){renderUpdatesStats();renderUpdatesList();}
+    }catch(e){toast(e.message||'Failed','error');}
+  });
+}
 
 init();
 </script>

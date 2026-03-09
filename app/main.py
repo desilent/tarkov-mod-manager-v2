@@ -22,11 +22,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
 import uvicorn
+import httpx
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="Tarkov Mod Manager", version="3.0.0")
+app = FastAPI(title="Tarkov Mod Manager", version="3.1.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -287,6 +288,11 @@ class ConfigFileWriteRequest(BaseModel):
     path: str
     content: str
 
+class ForgeSettingsRequest(BaseModel):
+    api_key: str = ""
+    auto_check: bool = False
+    check_interval_hours: int = 6
+
 # ── Helpers ───────────────────────────────────────────────────────────────────
 def _get_profile(profile_id: str) -> dict:
     cfg = load_config()
@@ -351,7 +357,7 @@ def scan_all_mods(profile_id: str) -> list[dict]:
     return all_mods
 
 def read_mod_meta(path: Path) -> dict:
-    meta = {"version": None, "author": None, "description": None}
+    meta = {"version": None, "author": None, "description": None, "guid": None}
     if not path.is_dir():
         # Single file (e.g. a .dll in plugins folder) — try DLL version extraction
         if path.suffix == ".dll":
@@ -428,13 +434,16 @@ def read_mod_meta(path: Path) -> dict:
     return meta
 
 def _parse_package_json(pkg_path: Path, meta: dict) -> dict:
-    """Parse a package.json and extract version/author/description."""
+    """Parse a package.json and extract version/author/description/guid."""
     try:
         with open(pkg_path) as f:
             data = json.load(f)
         meta["version"] = meta["version"] or data.get("version")
         meta["author"] = meta["author"] or data.get("author")
         meta["description"] = meta["description"] or data.get("description")
+        # The "name" field in SPT server mod package.json is the Forge GUID
+        if not meta.get("guid") and data.get("name"):
+            meta["guid"] = data["name"]
         if not meta["version"] and "akiVersion" in data:
             meta["version"] = data.get("akiVersion")
         if not meta["version"] and "sptVersion" in data:
@@ -473,7 +482,7 @@ def _try_parse_json_meta(file_path: Path, meta: dict) -> dict:
 
 def _read_dll_version(dll_path: Path) -> dict:
     """Extract version info from a .NET/BepInEx plugin DLL by parsing the User Strings heap."""
-    result = {"version": None, "author": None, "description": None}
+    result = {"version": None, "author": None, "description": None, "guid": None}
     try:
         data = dll_path.read_bytes()
 
@@ -515,7 +524,8 @@ def _read_dll_version(dll_path: Path) -> dict:
                     continue
                 s, next_off = read_us_string(data, str_offset)
                 if s and s.startswith('com.') and '.' in s[4:]:
-                    # Found a GUID string — read the next strings looking for a version
+                    # Found a GUID string — store it and read the next strings looking for a version
+                    result["guid"] = s
                     candidates = []
                     off = next_off
                     for _ in range(6):
@@ -1375,6 +1385,265 @@ def _build_sources_map(profile: str, p: dict) -> dict:
         sources["mods"] = mods_path
     return sources
 
+# ── Forge API Integration ─────────────────────────────────────────────────────
+FORGE_BASE = "https://forge.sp-tarkov.com/api/v0"
+FORGE_SETTINGS_FILE = DATA_DIR / "forge_settings.json"
+FORGE_CACHE_FILE = DATA_DIR / "forge_cache.json"
+
+def load_forge_settings() -> dict:
+    defaults = {"api_key": "", "auto_check": False, "check_interval_hours": 6}
+    if FORGE_SETTINGS_FILE.exists():
+        try:
+            with open(FORGE_SETTINGS_FILE) as f:
+                saved = json.load(f)
+            defaults.update(saved)
+        except Exception:
+            pass
+    return defaults
+
+def save_forge_settings(settings: dict):
+    with open(FORGE_SETTINGS_FILE, "w") as f:
+        json.dump(settings, f, indent=2)
+
+def load_forge_cache() -> dict:
+    if FORGE_CACHE_FILE.exists():
+        try:
+            with open(FORGE_CACHE_FILE) as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"last_check": None, "results": {}}
+
+def save_forge_cache(cache: dict):
+    with open(FORGE_CACHE_FILE, "w") as f:
+        json.dump(cache, f, indent=2)
+
+async def _forge_request(method: str, path: str, api_key: str,
+                          params: dict | None = None, body: dict | None = None,
+                          timeout: float = 30.0) -> dict:
+    """Make an authenticated request to the Forge API."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "TarkovModManager/3.1.0",
+    }
+    url = f"{FORGE_BASE}{path}"
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        if method == "GET":
+            r = await client.get(url, headers=headers, params=params)
+        else:
+            r = await client.post(url, headers=headers, params=params, json=body)
+        r.raise_for_status()
+        return r.json()
+
+async def forge_search_mod_by_guid(guid: str, api_key: str, client: httpx.AsyncClient) -> dict | None:
+    """Search the Forge for a mod by its GUID. Returns mod data or None."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "TarkovModManager/3.1.0",
+    }
+    try:
+        r = await client.get(f"{FORGE_BASE}/mods", headers=headers, params={
+            "filter[guid]": guid,
+            "include": "versions",
+        })
+        r.raise_for_status()
+        data = r.json()
+        mods = data.get("data", [])
+        if mods:
+            return mods[0]
+    except Exception as e:
+        logger.debug(f"Forge search for {guid} failed: {e}")
+    return None
+
+async def forge_get_mod_versions(mod_id: int, api_key: str) -> list:
+    """Get all versions for a Forge mod."""
+    try:
+        data = await _forge_request("GET", f"/mod/{mod_id}/versions", api_key)
+        return data.get("data", [])
+    except Exception as e:
+        logger.debug(f"Forge versions for mod {mod_id} failed: {e}")
+        return []
+
+def _compare_versions(installed: str, latest: str) -> bool:
+    """Return True if latest is newer than installed. Simple semver comparison."""
+    if not installed or not latest:
+        return False
+    try:
+        def parse_ver(v):
+            # Strip leading ~ or v
+            v = v.lstrip("~v")
+            parts = v.split(".")
+            return tuple(int(p) for p in parts if p.isdigit())
+        return parse_ver(latest) > parse_ver(installed)
+    except (ValueError, TypeError):
+        return installed != latest
+
+async def check_updates_for_profile(profile_id: str) -> dict:
+    """Check all mods in a profile against the Forge API for updates."""
+    settings = load_forge_settings()
+    api_key = settings.get("api_key", "")
+    if not api_key:
+        raise HTTPException(status_code=400, detail="Forge API key not configured. Set it in Updates → Settings.")
+
+    # Verify the API key works
+    try:
+        await _forge_request("GET", "/ping", api_key)
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="Invalid Forge API key. Check your token at forge.sp-tarkov.com")
+        raise HTTPException(status_code=502, detail=f"Forge API error: {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Forge API: {str(e)}")
+
+    mods = scan_all_mods(profile_id)
+    results = []
+    found = 0
+    updates_available = 0
+
+    # Use a shared client for all Forge requests in this check
+    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+        for mod in mods:
+            guid = mod.get("guid")
+            mod_result = {
+                "name": mod["name"],
+                "folder": mod["folder"],
+                "enabled": mod["enabled"],
+                "installed_version": mod.get("version"),
+                "guid": guid,
+                "forge_match": None,
+                "latest_version": None,
+                "update_available": False,
+                "forge_url": None,
+                "forge_mod_id": None,
+                "download_url": None,
+            }
+
+            if not guid:
+                mod_result["status"] = "no_guid"
+                results.append(mod_result)
+                continue
+
+            # Search Forge for this mod
+            forge_mod = await forge_search_mod_by_guid(guid, api_key, client)
+            if not forge_mod:
+                mod_result["status"] = "not_on_forge"
+                results.append(mod_result)
+                continue
+
+            found += 1
+            mod_result["forge_match"] = forge_mod.get("name", "")
+            mod_result["forge_mod_id"] = forge_mod.get("id")
+            mod_result["forge_url"] = forge_mod.get("detail_url", "")
+
+            # Get version info
+            versions = forge_mod.get("versions", [])
+            if versions:
+                latest = versions[0]  # First is most recent
+                mod_result["latest_version"] = latest.get("version")
+                mod_result["spt_version_constraint"] = latest.get("spt_version_constraint")
+                mod_result["download_url"] = latest.get("download_url")
+                mod_result["fika_compatibility"] = latest.get("fika_compatibility", "unknown")
+
+                if _compare_versions(mod.get("version", ""), latest.get("version", "")):
+                    mod_result["update_available"] = True
+                    updates_available += 1
+                    mod_result["status"] = "update_available"
+                else:
+                    mod_result["status"] = "up_to_date"
+            else:
+                mod_result["status"] = "no_versions"
+
+            results.append(mod_result)
+
+    summary = {
+        "profile": profile_id,
+        "total_mods": len(mods),
+        "forge_matched": found,
+        "updates_available": updates_available,
+        "unmatched": len(mods) - found,
+        "checked_at": datetime.now().isoformat(),
+    }
+
+    # Cache the results
+    cache = load_forge_cache()
+    cache["results"][profile_id] = {"summary": summary, "mods": results}
+    cache["last_check"] = datetime.now().isoformat()
+    save_forge_cache(cache)
+
+    return {"summary": summary, "mods": results}
+
+# ── Forge API Routes ──────────────────────────────────────────────────────────
+
+@app.get("/api/forge/settings")
+def get_forge_settings():
+    s = load_forge_settings()
+    # Mask the API key for security (only show last 8 chars)
+    masked_key = ""
+    if s.get("api_key"):
+        key = s["api_key"]
+        masked_key = "•" * max(0, len(key) - 8) + key[-8:] if len(key) > 8 else key
+    return {**s, "api_key_masked": masked_key, "has_key": bool(s.get("api_key"))}
+
+@app.post("/api/forge/settings")
+def update_forge_settings(req: ForgeSettingsRequest):
+    s = load_forge_settings()
+    if req.api_key:  # Only update key if provided (not empty)
+        s["api_key"] = req.api_key
+    s["auto_check"] = req.auto_check
+    s["check_interval_hours"] = max(1, min(168, req.check_interval_hours))
+    save_forge_settings(s)
+    return {"ok": True}
+
+@app.delete("/api/forge/settings/key")
+def delete_forge_api_key():
+    s = load_forge_settings()
+    s["api_key"] = ""
+    save_forge_settings(s)
+    # Clear cache too
+    save_forge_cache({"last_check": None, "results": {}})
+    return {"ok": True}
+
+@app.post("/api/forge/settings/test")
+async def test_forge_api_key():
+    """Test if the stored Forge API key is valid."""
+    s = load_forge_settings()
+    if not s.get("api_key"):
+        raise HTTPException(status_code=400, detail="No API key configured")
+    try:
+        data = await _forge_request("GET", "/auth/user", s["api_key"])
+        user = data.get("data", {})
+        return {"ok": True, "user": user.get("name", "Unknown"), "message": "API key is valid"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 401:
+            raise HTTPException(status_code=401, detail="API key is invalid or expired")
+        raise HTTPException(status_code=502, detail=f"Forge API error: {e.response.status_code}")
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Cannot reach Forge: {str(e)}")
+
+@app.get("/api/forge/check-updates/{profile}")
+async def forge_check_updates(profile: str):
+    """Check a profile's mods against the Forge for available updates."""
+    _get_profile(profile)  # Validate profile exists
+    return await check_updates_for_profile(profile)
+
+@app.get("/api/forge/cache/{profile}")
+def get_forge_cache(profile: str):
+    """Get cached update check results for a profile."""
+    cache = load_forge_cache()
+    profile_cache = cache.get("results", {}).get(profile)
+    if not profile_cache:
+        return {"cached": False}
+    return {"cached": True, **profile_cache}
+
+@app.delete("/api/forge/cache")
+def clear_forge_cache():
+    save_forge_cache({"last_check": None, "results": {}})
+    return {"ok": True}
+
 # ── Auth Routes ───────────────────────────────────────────────────────────────
 
 @app.get("/api/auth/check")
@@ -1405,7 +1674,7 @@ def auth_logout(request: Request, response: Response):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": "3.0.0", "data_dir": str(DATA_DIR)}
+    return {"status": "ok", "version": "3.1.0", "data_dir": str(DATA_DIR)}
 
 # ── WebSocket Live Reload ─────────────────────────────────────────────────────
 from fastapi import WebSocket, WebSocketDisconnect
