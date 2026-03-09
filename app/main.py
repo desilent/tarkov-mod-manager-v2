@@ -349,6 +349,9 @@ def scan_all_mods(profile_id: str) -> list[dict]:
 def read_mod_meta(path: Path) -> dict:
     meta = {"version": None, "author": None, "description": None}
     if not path.is_dir():
+        # Single file (e.g. a .dll in plugins folder) — try DLL version extraction
+        if path.suffix == ".dll":
+            return _read_dll_version(path)
         return meta
 
     # Strategy 1: package.json in root (standard SPT server mod)
@@ -465,40 +468,73 @@ def _try_parse_json_meta(file_path: Path, meta: dict) -> dict:
     return meta
 
 def _read_dll_version(dll_path: Path) -> dict:
-    """Extract version info from a .NET assembly DLL by scanning for known patterns."""
+    """Extract version info from a .NET/BepInEx plugin DLL."""
     result = {"version": None, "author": None, "description": None}
     try:
-        # Read the DLL binary and search for version strings
-        # .NET assemblies embed version in AssemblyVersion attribute and
-        # BepInEx plugins embed it in the BepInPlugin attribute as UTF-16 strings
         data = dll_path.read_bytes()
         import re
 
-        # Look for BepInPlugin attribute pattern: contains version string like "1.2.3"
-        # These are stored as UTF-16LE strings in the DLL
-        # Search for semver-like patterns in UTF-16
-        text_utf16 = data.decode("utf-16-le", errors="replace")
-        # Also try UTF-8 for some assemblies
-        text_utf8 = data.decode("utf-8", errors="replace")
+        # Decode as UTF-8 for string scanning
+        text = data.decode("utf-8", errors="replace")
 
-        for text in [text_utf8, text_utf16]:
-            # Look for version patterns near the mod name
-            dll_stem = dll_path.stem.lower()
-            # Standard semver: 1.0.0, 1.2.3, 1.0.0.0
-            versions = re.findall(r'(\d+\.\d+\.\d+(?:\.\d+)?)', text)
-            if versions:
-                # Filter out common false positives (framework versions etc)
-                for v in versions:
-                    # Skip .NET framework versions
-                    if v.startswith("4.0.0") or v.startswith("2.0.0.0") or v.startswith("0.0.0"):
-                        continue
-                    # Skip very long version strings
-                    if len(v) > 20:
-                        continue
-                    result["version"] = v
-                    break
-            if result["version"]:
-                break
+        # Strategy A: Find BepInPlugin attribute strings
+        # BepInEx plugins contain their GUID, name, and version as consecutive strings
+        # Pattern: "com.author.modname" followed nearby by a semver like "1.2.3"
+        # Look for BepInPlugin-style GUIDs (com.something.something)
+        guid_matches = re.finditer(r'(com\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+)', text)
+        for gm in guid_matches:
+            # Search in the ~200 bytes after the GUID for a version string
+            search_start = gm.end()
+            search_region = text[search_start:search_start + 200]
+            ver_match = re.search(r'(\d+\.\d+\.\d+(?:\.\d+)?)', search_region)
+            if ver_match:
+                v = ver_match.group(1)
+                # Filter out CLR/framework versions
+                if v in ("4.0.30319", "2.0.50727", "0.0.0.0", "0.0.0", "1.0.0.0"):
+                    continue
+                result["version"] = v
+                # Try to extract author from GUID (com.AUTHOR.modname)
+                guid_parts = gm.group(1).split(".")
+                if len(guid_parts) >= 2 and not result["author"]:
+                    result["author"] = guid_parts[1]
+                return result
+
+        # Strategy B: Look for AssemblyFileVersion or AssemblyInformationalVersion
+        # These are stored as UTF-16LE strings in .NET assemblies
+        text_u16 = data.decode("utf-16-le", errors="replace")
+        for attr_text in [text_u16, text]:
+            # AssemblyFileVersion is more reliable than AssemblyVersion
+            for pattern in [
+                r'AssemblyFileVersion[^\d]{0,20}(\d+\.\d+\.\d+(?:\.\d+)?)',
+                r'AssemblyInformationalVersion[^\d]{0,20}(\d+\.\d+\.\d+[^\x00\ufffd]*)',
+                r'FileVersion[^\d]{0,20}(\d+\.\d+\.\d+(?:\.\d+)?)',
+            ]:
+                m = re.search(pattern, attr_text)
+                if m:
+                    v = m.group(1).strip().split('\x00')[0].strip()
+                    if v and v not in ("4.0.30319", "2.0.50727", "0.0.0.0", "0.0.0", "1.0.0.0"):
+                        result["version"] = v
+                        return result
+
+        # Strategy C: Scan raw bytes for the PE version resource
+        # The VS_FIXEDFILEINFO structure contains file version as 4 uint16s
+        # Signature: 0xFEEF04BD
+        sig = b'\xbd\x04\xef\xfe'
+        pos = data.find(sig)
+        if pos >= 0 and pos + 52 <= len(data):
+            import struct
+            # File version is at offset +8 from signature: MS(hi,lo), LS(hi,lo)
+            ms = struct.unpack_from('<I', data, pos + 8)[0]
+            ls = struct.unpack_from('<I', data, pos + 12)[0]
+            major = (ms >> 16) & 0xFFFF
+            minor = ms & 0xFFFF
+            build = (ls >> 16) & 0xFFFF
+            patch = ls & 0xFFFF
+            v = f"{major}.{minor}.{build}"
+            if patch > 0:
+                v += f".{patch}"
+            if v not in ("0.0.0", "0.0.0.0", "4.0.30319"):
+                result["version"] = v
 
     except Exception:
         pass
