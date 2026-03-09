@@ -343,7 +343,7 @@
   .config-editor-modified.show { opacity: 1; }
 
   /* ── Find/Replace Bar (VS Code style) ── */
-  .config-find-bar { display: none; position: absolute; top: 0; right: 20px; z-index: 10; background: #252526; border: 1px solid #454545; border-top: none; border-radius: 0 0 4px 4px; padding: 6px 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); min-width: 340px; }
+  .config-find-bar { display: none; position: absolute; top: 0; right: 20px; z-index: 10; background: #252526; border: 1px solid #454545; border-top: none; border-radius: 0 0 4px 4px; padding: 6px 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); min-width: 340px; pointer-events: auto; }
   .config-find-bar.open { display: flex; flex-direction: column; gap: 5px; animation: findBarSlide 0.15s ease; }
   @keyframes findBarSlide { from { transform: translateY(-100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
   .config-find-row { display: flex; align-items: center; gap: 4px; }
@@ -567,7 +567,7 @@
             <div class="config-editor-modified" id="configModifiedFlag">● MODIFIED</div>
           </div>
           <div id="configLiveBannerSlot"></div>
-          <div class="config-editor-wrap" id="configEditorWrap">
+          <div style="position:relative; flex-shrink:0;">
             <div class="config-find-bar" id="configFindBar">
               <div class="config-find-row">
                 <button class="config-find-toggle" id="configFindToggleReplace" onclick="toggleFindReplace()" title="Toggle Replace">▶</button>
@@ -586,6 +586,8 @@
                 <button class="config-replace-btn" onclick="replaceAll()">All</button>
               </div>
             </div>
+          </div>
+          <div class="config-editor-wrap" id="configEditorWrap">
             <div class="config-empty-editor" id="configEmptyEditor">
               <div class="big-icon">⚙</div>
               <h3>Config Editor</h3>
