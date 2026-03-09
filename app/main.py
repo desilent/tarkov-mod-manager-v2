@@ -368,7 +368,6 @@ def read_mod_meta(path: Path) -> dict:
                     meta = _parse_package_json(nested_pkg, meta)
                     if meta["version"]:
                         return meta
-        # Also check src/package.json directly
         nested_pkg = src_dir / "package.json"
         if nested_pkg.exists():
             meta = _parse_package_json(nested_pkg, meta)
@@ -378,7 +377,6 @@ def read_mod_meta(path: Path) -> dict:
     # Strategy 3: Find any package.json up to 3 levels deep
     try:
         for pkg_file in path.rglob("package.json"):
-            # Skip node_modules
             if "node_modules" in str(pkg_file):
                 continue
             rel = pkg_file.relative_to(path)
@@ -389,21 +387,36 @@ def read_mod_meta(path: Path) -> dict:
     except Exception:
         pass
 
-    # Strategy 4: Look for config.json or mod.json (some mods use these)
-    for config_name in ["config.json", "mod.json", "manifest.json"]:
+    # Strategy 4: JSON config files (with and without extension)
+    for config_name in ["config.json", "mod.json", "manifest.json", "config", "info", "meta"]:
         cfg = path / config_name
-        if cfg.exists():
-            try:
-                with open(cfg) as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    meta["version"] = meta["version"] or data.get("version") or data.get("modVersion")
-                    meta["author"] = meta["author"] or data.get("author") or data.get("authorName")
-                    meta["description"] = meta["description"] or data.get("description")
-                    if meta["version"]:
-                        return meta
-            except Exception:
-                pass
+        if cfg.exists() and cfg.is_file():
+            meta = _try_parse_json_meta(cfg, meta)
+            if meta["version"]:
+                return meta
+
+    # Strategy 5: Any .json file in root that might contain version info
+    try:
+        for json_file in sorted(path.iterdir()):
+            if json_file.is_file() and json_file.suffix == ".json" and json_file.name != "blacklists":
+                meta = _try_parse_json_meta(json_file, meta)
+                if meta["version"]:
+                    return meta
+    except Exception:
+        pass
+
+    # Strategy 6: Extract version from .dll assembly metadata (BepInEx plugins)
+    try:
+        for dll_file in sorted(path.iterdir()):
+            if dll_file.is_file() and dll_file.suffix == ".dll":
+                dll_meta = _read_dll_version(dll_file)
+                if dll_meta.get("version"):
+                    meta["version"] = meta["version"] or dll_meta["version"]
+                    meta["author"] = meta["author"] or dll_meta.get("author")
+                    meta["description"] = meta["description"] or dll_meta.get("description")
+                    return meta
+    except Exception:
+        pass
 
     return meta
 
@@ -415,17 +428,81 @@ def _parse_package_json(pkg_path: Path, meta: dict) -> dict:
         meta["version"] = meta["version"] or data.get("version")
         meta["author"] = meta["author"] or data.get("author")
         meta["description"] = meta["description"] or data.get("description")
-        # Some SPT mods nest info differently
         if not meta["version"] and "akiVersion" in data:
             meta["version"] = data.get("akiVersion")
         if not meta["version"] and "sptVersion" in data:
             meta["version"] = data.get("sptVersion")
-        # Handle author as object (npm style: {name: "...", email: "..."})
         if isinstance(meta["author"], dict):
             meta["author"] = meta["author"].get("name", str(meta["author"]))
     except Exception:
         pass
     return meta
+
+def _try_parse_json_meta(file_path: Path, meta: dict) -> dict:
+    """Try to parse a file as JSON and extract version/author/description."""
+    try:
+        raw = file_path.read_text(encoding="utf-8", errors="replace").strip()
+        if not raw or raw[0] not in ('{', '['):
+            return meta
+        data = json.loads(raw)
+        if isinstance(data, dict):
+            # Check common version field names
+            for vkey in ["version", "modVersion", "Version", "mod_version", "pluginVersion"]:
+                if data.get(vkey) and not meta["version"]:
+                    meta["version"] = str(data[vkey])
+                    break
+            for akey in ["author", "authorName", "Author", "authors"]:
+                if data.get(akey) and not meta["author"]:
+                    val = data[akey]
+                    meta["author"] = val if isinstance(val, str) else (val[0] if isinstance(val, list) and val else str(val))
+                    break
+            for dkey in ["description", "Description", "desc"]:
+                if data.get(dkey) and not meta["description"]:
+                    meta["description"] = str(data[dkey])[:200]
+                    break
+    except Exception:
+        pass
+    return meta
+
+def _read_dll_version(dll_path: Path) -> dict:
+    """Extract version info from a .NET assembly DLL by scanning for known patterns."""
+    result = {"version": None, "author": None, "description": None}
+    try:
+        # Read the DLL binary and search for version strings
+        # .NET assemblies embed version in AssemblyVersion attribute and
+        # BepInEx plugins embed it in the BepInPlugin attribute as UTF-16 strings
+        data = dll_path.read_bytes()
+        import re
+
+        # Look for BepInPlugin attribute pattern: contains version string like "1.2.3"
+        # These are stored as UTF-16LE strings in the DLL
+        # Search for semver-like patterns in UTF-16
+        text_utf16 = data.decode("utf-16-le", errors="replace")
+        # Also try UTF-8 for some assemblies
+        text_utf8 = data.decode("utf-8", errors="replace")
+
+        for text in [text_utf8, text_utf16]:
+            # Look for version patterns near the mod name
+            dll_stem = dll_path.stem.lower()
+            # Standard semver: 1.0.0, 1.2.3, 1.0.0.0
+            versions = re.findall(r'(\d+\.\d+\.\d+(?:\.\d+)?)', text)
+            if versions:
+                # Filter out common false positives (framework versions etc)
+                for v in versions:
+                    # Skip .NET framework versions
+                    if v.startswith("4.0.0") or v.startswith("2.0.0.0") or v.startswith("0.0.0"):
+                        continue
+                    # Skip very long version strings
+                    if len(v) > 20:
+                        continue
+                    result["version"] = v
+                    break
+            if result["version"]:
+                break
+
+    except Exception:
+        pass
+    return result
 
 def get_size(path: Path) -> int:
     if path.is_file(): return path.stat().st_size
