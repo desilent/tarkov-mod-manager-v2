@@ -1,5 +1,9 @@
 import os
+import re
 import shutil
+import struct
+import subprocess
+import urllib.request
 import zipfile
 import tarfile
 import json
@@ -8,13 +12,12 @@ import socket
 import asyncio
 import secrets
 from pathlib import Path
-from typing import Optional
 from datetime import datetime, timedelta
 from concurrent.futures import ThreadPoolExecutor
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request, Response, Cookie
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Response
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel
@@ -472,7 +475,6 @@ def _read_dll_version(dll_path: Path) -> dict:
     result = {"version": None, "author": None, "description": None}
     try:
         data = dll_path.read_bytes()
-        import re, struct
 
         # ── Strategy A: Parse .NET #US (User Strings) heap for BepInPlugin data ──
         # BepInPlugin stores: GUID ("com.author.mod"), display name, version
@@ -607,7 +609,6 @@ def extract_archive_to_staging(archive_path: Path) -> Path:
             t.extractall(staging)
     else:
         # Fallback to 7z command — handles .7z, .rar, and anything else
-        import subprocess
         result = subprocess.run(
             ["7z", "x", str(archive_path), f"-o{staging}", "-y", "-bso0", "-bsp0"],
             capture_output=True, text=True, timeout=120
@@ -728,7 +729,6 @@ def install_detected_mods(detected: dict, profile_id: str, config: dict) -> dict
     return summary
 
 def _sync_download(url: str, dest: Path):
-    import urllib.request
     urllib.request.urlretrieve(url, dest)
 
 # ── Presets ───────────────────────────────────────────────────────────────────
@@ -808,7 +808,7 @@ def delete_profile(profile_id: str):
     return {"ok": True}
 
 @app.post("/api/config/profile")
-def create_profile(req: ProfileUpdateRequest, profile_id: Optional[str] = None):
+def create_profile(req: ProfileUpdateRequest, profile_id: str | None = None):
     cfg = load_config()
     pid = profile_id or req.label.lower().replace(" ", "-")
     cfg["profiles"][pid] = {
