@@ -72,7 +72,7 @@
 
   /* ── MAIN ── */
   .main { display: flex; flex-direction: column; overflow: hidden; }
-  #viewMods, #viewPresets, #viewConfig { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  #viewMods, #viewPresets, #viewConfig, #viewLogs { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
   .toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 20px; background: var(--bg-panel); border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
   .toolbar-title { font-family: 'Rajdhani', sans-serif; font-weight: 700; font-size: 20px; letter-spacing: 2px; color: var(--text-primary); text-transform: uppercase; }
   .profile-badge { padding: 3px 10px; border-radius: 3px; font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 1px; border: 1px solid; }
@@ -244,24 +244,38 @@
   .save-preset-preview-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-family: 'Share Tech Mono', monospace; font-size: 12px; }
   .save-preset-preview-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
-  /* ── LOG PANEL ── */
-  .log-panel { flex-shrink: 0; display: flex; flex-direction: column; max-height: 40vh; border-top: 1px solid var(--border); }
-  .log-divider { display: flex; align-items: center; justify-content: space-between; padding: 6px 20px; background: var(--bg-panel); cursor: pointer; user-select: none; flex-shrink: 0; }
-  .log-divider:hover { background: var(--bg-hover); }
-  .log-divider-label { font-family: 'Share Tech Mono', monospace; font-size: 11px; letter-spacing: 2px; color: var(--text-dim); display: flex; align-items: center; gap: 8px; }
-  .log-divider-icon { font-size: 8px; transition: transform 0.2s; display: inline-block; }
-  .log-divider-icon.collapsed { transform: rotate(-90deg); }
-  .log-divider-container { color: var(--text-secondary); font-size: 11px; }
-  .log-divider-actions { display: flex; gap: 6px; }
-  .log-action-btn { padding: 3px 9px; background: none; border: 1px solid var(--border-bright); border-radius: 3px; color: var(--text-dim); font-family: 'Share Tech Mono', monospace; font-size: 10px; letter-spacing: 1px; cursor: pointer; }
-  .log-action-btn:hover { color: var(--text-primary); border-color: var(--text-secondary); }
-  .log-action-btn.active { color: var(--enabled); border-color: rgba(61,232,122,0.3); }
-  .log-body { flex: 1; overflow-y: auto; background: #0e1116; min-height: 0; max-height: 35vh; transition: max-height 0.25s ease; }
-  .log-body.collapsed { max-height: 0; overflow: hidden; }
-  .log-body::-webkit-scrollbar { width: 4px; }
-  .log-body::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
-  .log-content { font-family: 'Share Tech Mono', monospace; font-size: 13px; line-height: 1.6; color: var(--text-secondary); padding: 10px 20px; margin: 0; white-space: pre-wrap; word-break: break-all; }
+  /* ── LOGS VIEW ── */
+  #viewLogs { display: flex; flex-direction: column; flex: 1; overflow: hidden; min-height: 0; }
+  .logs-container-tabs { display: flex; gap: 0; background: var(--bg-panel); border-bottom: 1px solid var(--border); flex-shrink: 0; padding: 0 16px; overflow-x: auto; }
+  .logs-container-tabs::-webkit-scrollbar { height: 0; }
+  .logs-tab { display: flex; align-items: center; gap: 8px; padding: 9px 16px; background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; font-family: 'Barlow Condensed', sans-serif; font-weight: 600; font-size: 14px; letter-spacing: 1px; color: var(--text-secondary); transition: all 0.15s; white-space: nowrap; position: relative; }
+  .logs-tab:hover { color: var(--text-primary); background: var(--bg-hover); }
+  .logs-tab.active { color: var(--accent-gold); border-bottom-color: var(--accent-gold); }
+  .logs-tab-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .logs-tab-dot.running { background: var(--enabled); box-shadow: 0 0 6px var(--enabled); animation: pulse 2s infinite; }
+  .logs-tab-dot.stopped { background: var(--disabled); }
+  .logs-tab-dot.unknown { background: var(--text-dim); }
+  .logs-tab-controls { display: flex; gap: 4px; margin-left: 4px; }
+  .logs-tab-ctl { padding: 2px 7px; background: var(--bg-card); border: 1px solid var(--border-bright); border-radius: 3px; cursor: pointer; font-family: 'Share Tech Mono', monospace; font-size: 9px; letter-spacing: 0.5px; color: var(--text-secondary); transition: all 0.15s; line-height: 1; }
+  .logs-tab-ctl:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+  .logs-tab-ctl.stop { color: var(--disabled); border-color: rgba(240,96,80,0.3); }
+  .logs-tab-ctl.stop:hover { background: var(--disabled-dim); border-color: var(--disabled); }
+  .logs-tab-ctl.start { color: var(--enabled); border-color: rgba(72,232,128,0.3); }
+  .logs-tab-ctl.start:hover { background: var(--enabled-dim); border-color: var(--enabled); }
+  .logs-tab-ctl.restart { color: var(--accent-gold); border-color: rgba(240,192,80,0.3); }
+  .logs-tab-ctl.restart:hover { background: var(--accent-gold-dim); border-color: var(--accent-gold); }
+  .logs-search-box { display: flex; align-items: center; gap: 8px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 3px; padding: 5px 10px; }
+  .logs-search-box:focus-within { border-color: var(--border-bright); }
+  .logs-search-box input { background: none; border: none; outline: none; color: var(--text-primary); font-family: 'Share Tech Mono', monospace; font-size: 13px; width: 150px; }
+  .logs-search-box input::placeholder { color: var(--text-dim); }
+  .logs-body-wrap { flex: 1; overflow-y: auto; background: #0e1116; min-height: 0; }
+  .logs-body-wrap::-webkit-scrollbar { width: 6px; }
+  .logs-body-wrap::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+  .logs-empty { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 12px; height: 100%; color: var(--text-dim); padding: 40px; }
+  .logs-output { display: block; }
+  .logs-content { font-family: 'Share Tech Mono', monospace; font-size: 13px; line-height: 1.6; color: var(--text-secondary); padding: 14px 20px; margin: 0; white-space: pre-wrap; word-break: break-all; }
   .log-line-error { color: #e84b4b; } .log-line-warn { color: #e8a84b; } .log-line-debug { color: var(--text-dim); }
+  .log-line-match { background: rgba(234,185,50,0.15); border-radius: 1px; }
   .ansi-black { color: #667; } .ansi-red { color: #f06050; } .ansi-green { color: #48e880; }
   .ansi-yellow { color: #f0c050; } .ansi-blue { color: #5090f0; } .ansi-magenta { color: #d080ee; }
   .ansi-cyan { color: #50e8c8; } .ansi-white { color: #e2e8f0; }
@@ -479,6 +493,7 @@
       <button class="view-nav-btn active" id="navMods" onclick="switchView('mods')"><span>▦</span> Mods</button>
       <button class="view-nav-btn" id="navPresets" onclick="switchView('presets')"><span>◫</span> Presets</button>
       <button class="view-nav-btn" id="navConfig" onclick="switchView('config')"><span>⚙</span> Config</button>
+      <button class="view-nav-btn" id="navLogs" onclick="switchView('logs')"><span>▤</span> Logs</button>
     </div>
     <div class="sidebar-footer">
       <div class="sys-info">VER: 3.0.0<br>API: <span id="apiVer">—</span></div>
@@ -516,16 +531,6 @@
         </div>
         <div class="mod-header" id="modHeader" style="display:none"><span></span><span>MOD NAME</span><span>TYPE</span><span>VERSION</span><span>AUTHOR</span><span>STATUS</span><span></span></div>
         <div id="modList"><div class="empty-state"><div class="big-icon">◈</div><h3>No Container Selected</h3><p>Choose a container from the sidebar.</p></div></div>
-      </div>
-      <div class="log-panel" id="logPanel" style="display:none">
-        <div class="log-divider" onclick="toggleLogPanel()">
-          <span class="log-divider-label"><span class="log-divider-icon" id="logChevron">▼</span>CONTAINER LOG<span class="log-divider-container" id="logContainerName"></span></span>
-          <span class="log-divider-actions">
-            <button class="log-action-btn" onclick="event.stopPropagation();clearLogDisplay()">CLEAR</button>
-            <button class="log-action-btn active" id="logAutoBtn" onclick="event.stopPropagation();toggleLogAuto()">AUTO: ON</button>
-          </span>
-        </div>
-        <div class="log-body" id="logBody"><pre class="log-content" id="logContent">Waiting for logs...</pre></div>
       </div>
     </div>
 
@@ -610,6 +615,32 @@
             </div>
             <div class="config-footer-right">Ctrl+F Find · Ctrl+H Replace · Ctrl+S Save</div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOGS VIEW -->
+    <div id="viewLogs" style="display:none">
+      <div class="toolbar">
+        <div><div class="toolbar-title" id="logsToolbarTitle">Container Logs</div></div>
+        <div class="toolbar-spacer"></div>
+        <div class="logs-search-box">
+          <svg width="11" height="11" viewBox="0 0 16 16" fill="none"><circle cx="6.5" cy="6.5" r="5" stroke="#6a8090" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#6a8090" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <input type="text" id="logsSearchInput" placeholder="FILTER LOGS..." oninput="filterLogOutput()">
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearLogsViewDisplay()">⌫ CLEAR</button>
+        <button class="btn btn-ghost btn-sm" id="logsAutoBtn" onclick="toggleLogsViewAuto()">AUTO: ON</button>
+        <button class="btn btn-ghost btn-sm" onclick="fetchLogsView()">↻ REFRESH</button>
+      </div>
+      <div class="logs-container-tabs" id="logsContainerTabs"></div>
+      <div class="logs-body-wrap">
+        <div class="logs-empty" id="logsEmpty">
+          <div class="big-icon" style="font-size:38px;opacity:0.35">▤</div>
+          <h3 style="font-family:'Rajdhani',sans-serif;font-weight:600;font-size:16px;letter-spacing:2px;text-transform:uppercase;color:var(--text-secondary)">No Containers Configured</h3>
+          <p style="font-size:13px;color:var(--text-dim);text-align:center;max-width:300px;line-height:1.5">Configure containers with Docker container names to view their logs here.</p>
+        </div>
+        <div class="logs-output" id="logsOutput" style="display:none">
+          <pre class="logs-content" id="logsContent">Waiting for logs...</pre>
         </div>
       </div>
     </div>
@@ -753,7 +784,7 @@ function closeSidebar(){document.getElementById('sidebar').classList.remove('ope
 function startContainerPolling(){fetchContainerStatuses();state.containerPollTimer=setInterval(fetchContainerStatuses,5000);}
 const CONTAINER_MAP_FE={};
 function updateContainerMapFE(){Object.entries(state.containers).forEach(([pid,c])=>{if(c.name)CONTAINER_MAP_FE[pid]=c.name;else delete CONTAINER_MAP_FE[pid];});}
-async function fetchContainerStatuses(){try{const r=await fetch(`${API}/api/containers`);if(!r.ok)return;state.containers=await r.json();updateContainerMapFE();renderContainerBar();renderLockBanner();renderSidebar();if(state.currentView==='presets'){renderPresetsToolbar();renderPresets();}if(state.currentView==='config'){renderConfigLiveBanner();}if(state.currentView==='mods'&&state.activeProfile){const p=document.getElementById('logPanel');if(CONTAINER_MAP_FE[state.activeProfile]){if(p.style.display==='none')showLogPanel();}else hideLogPanel();}}catch{}}
+async function fetchContainerStatuses(){try{const r=await fetch(`${API}/api/containers`);if(!r.ok)return;state.containers=await r.json();updateContainerMapFE();renderContainerBar();renderLockBanner();renderSidebar();if(state.currentView==='presets'){renderPresetsToolbar();renderPresets();}if(state.currentView==='config'){renderConfigLiveBanner();}if(state.currentView==='logs'){renderLogsTabs();}}catch{}}
 function isProfileLocked(pid){const c=state.containers[pid];return c&&c.available&&c.state==='running';}
 function renderContainerBar(){const conf=Object.values(state.containers).filter(c=>c.name);const bar=document.getElementById('containerBar');if(!conf.length){bar.style.display='none';return;}bar.style.display='flex';document.getElementById('containerPills').innerHTML=Object.entries(state.containers).map(([pid,c])=>{if(!c.name)return'';const p=state.profiles[pid];const l=p?p.label:pid;const sc=c.available?c.state:'unknown';const sl=c.available?c.state.toUpperCase():'N/A';const run=c.state==='running'&&c.available;return`<div class="container-pill ${sc}" title="${esc(c.name)}"><div class="container-pill-dot"></div>${esc(l)}: ${sl}<button class="container-pill-btn" ${!c.available?'disabled':''} onclick="containerAction('${esc(pid)}','${run?'stop':'start'}')">${run?'STOP':'START'}</button></div>`;}).join('');}
 function renderLockBanner(){const slot=document.getElementById('lockBannerSlot');const ib=document.getElementById('installBtn');if(!state.activeProfile){slot.innerHTML='';if(ib)ib.disabled=true;return;}const locked=isProfileLocked(state.activeProfile);if(ib)ib.disabled=locked;if(!locked){slot.innerHTML='';return;}const l=state.profiles[state.activeProfile]?.label||state.activeProfile;slot.innerHTML=`<div class="lock-banner"><span class="lock-banner-icon">🔒</span><span><strong>${esc(l)}</strong> container is RUNNING — mod changes locked</span><button class="lock-banner-stop" onclick="containerAction('${esc(state.activeProfile)}','stop')">■ STOP</button></div>`;}
@@ -795,7 +826,7 @@ else if(ctlHtml) subLine=ctlHtml;
 btn.innerHTML=`<div class="profile-dot" style="background:${dc};box-shadow:${dg}"></div><div class="profile-info"><div class="profile-name">${esc(p.label)}</div>${subLine}</div>`;
 btn.onclick=e=>{if(e.target.closest('.profile-ctl-btn'))return;selectProfile(id);closeSidebar();};el.appendChild(btn);});}
 
-async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};configState.sources=[];configState.openFile=null;configState.modified=false;renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}else if(state.currentView==='config'){renderConfigToolbar();renderConfigTree();resetConfigEditor();await refreshConfigFiles();}if(state.currentView==='mods')showLogPanel();}
+async function selectProfile(id){state.activeProfile=id;state.mods=[];state.presets={};configState.sources=[];configState.openFile=null;configState.modified=false;renderSidebar();renderToolbar();renderMods();renderLockBanner();await refreshMods();if(state.currentView==='presets'){renderPresetsToolbar();await refreshPresets();}else if(state.currentView==='config'){renderConfigToolbar();renderConfigTree();resetConfigEditor();await refreshConfigFiles();}else if(state.currentView==='logs'){renderLogsTabs();}}
 function renderToolbar(){const p=state.profiles[state.activeProfile];if(!p)return;document.getElementById('toolbarTitle').textContent=p.label;document.getElementById('profileBadge').innerHTML=`<span class="profile-badge" style="color:${p.color};border-color:${p.color};background:${p.color}18">${state.activeProfile.toUpperCase()}</span>`;}
 async function refreshMods(){if(!state.activeProfile)return;try{const r=await fetch(`${API}/api/mods/${state.activeProfile}`);const d=await r.json();state.mods=d.mods||[];renderMods();renderSidebar();}catch{toast('Failed to load mods','error');}}
 
@@ -832,22 +863,148 @@ function openEditProfile(id){state.editingProfile=id;const p=state.profiles[id];
 async function saveProfile(){const label=document.getElementById('pName').value.trim();const mods_path=document.getElementById('pModsPath').value.trim();const plugins_path=document.getElementById('pPluginsPath').value.trim();const color=document.getElementById('pColor').value;if(!label){toast('Name is required','error');return;}try{const url=state.editingProfile?`${API}/api/config/profile/${state.editingProfile}`:`${API}/api/config/profile`;await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({label,mods_path,plugins_path,color})});await loadConfig();closeModal('profileModal');toast('Container saved','success');}catch{toast('Save failed','error');}}
 async function deleteEditingProfile(){if(!state.editingProfile)return;const l=state.profiles[state.editingProfile]?.label||state.editingProfile;showGenericConfirm('Delete Container',`Delete <strong>${esc(l)}</strong>?`,'Mod files on disk are not affected.','Delete',async()=>{closeModal('genericConfirmModal');try{await fetch(`${API}/api/config/profile/${state.editingProfile}`,{method:'DELETE'});if(state.activeProfile===state.editingProfile)state.activeProfile=null;closeModal('profileModal');await loadConfig();toast(`"${l}" deleted`,'success');}catch(e){toast(e.message||'Delete failed','error');}});}
 
-// ── Logs ──
-let logState={collapsed:false,autoRefresh:true,pollTimer:null};
-function showLogPanel(){const p=document.getElementById('logPanel');const c=CONTAINER_MAP_FE[state.activeProfile];if(!c){p.style.display='none';stopLogPolling();return;}p.style.display='';document.getElementById('logContainerName').textContent=c;if(logState.autoRefresh)startLogPolling();}
-function hideLogPanel(){document.getElementById('logPanel').style.display='none';stopLogPolling();}
-function toggleLogPanel(){logState.collapsed=!logState.collapsed;document.getElementById('logBody').classList.toggle('collapsed',logState.collapsed);document.getElementById('logChevron').classList.toggle('collapsed',logState.collapsed);}
-function toggleLogAuto(){logState.autoRefresh=!logState.autoRefresh;const b=document.getElementById('logAutoBtn');b.textContent=`AUTO: ${logState.autoRefresh?'ON':'OFF'}`;b.classList.toggle('active',logState.autoRefresh);logState.autoRefresh?startLogPolling():stopLogPolling();}
-function startLogPolling(){stopLogPolling();fetchLogs();logState.pollTimer=setInterval(fetchLogs,3000);}
-function stopLogPolling(){if(logState.pollTimer){clearInterval(logState.pollTimer);logState.pollTimer=null;}}
-function clearLogDisplay(){document.getElementById('logContent').innerHTML='<span style="color:var(--text-dim)">Cleared.</span>';}
-async function fetchLogs(){if(!state.activeProfile)return;try{const r=await fetch(`${API}/api/containers/${state.activeProfile}/logs?lines=200`);if(!r.ok)return;const d=await r.json();if(d.logs)renderLogs(d.logs);}catch{}}
+// ── Logs View ──
+const logsState = { activeContainer: null, autoRefresh: true, pollTimer: null, rawText: '', filterQuery: '' };
+
+function renderLogsTabs(){
+  const tabsEl=document.getElementById('logsContainerTabs');
+  const emptyEl=document.getElementById('logsEmpty');
+  const outputEl=document.getElementById('logsOutput');
+  // Get all containers that have names configured
+  const containers=Object.entries(state.containers).filter(([,c])=>c.name);
+  if(!containers.length){
+    tabsEl.innerHTML='';
+    emptyEl.style.display='';
+    outputEl.style.display='none';
+    return;
+  }
+  emptyEl.style.display='none';
+  outputEl.style.display='';
+  // Auto-select first if none selected or current is gone
+  if(!logsState.activeContainer||!state.containers[logsState.activeContainer]?.name){
+    logsState.activeContainer=containers[0][0];
+  }
+  tabsEl.innerHTML=containers.map(([pid,c])=>{
+    const p=state.profiles[pid];
+    const label=p?p.label:pid;
+    const isActive=pid===logsState.activeContainer;
+    const stateClass=c.available?c.state:'unknown';
+    const isRun=c.available&&c.state==='running';
+    let ctls='';
+    if(isActive&&c.available){
+      if(isRun){
+        ctls=`<span class="logs-tab-controls"><button class="logs-tab-ctl stop" onclick="event.stopPropagation();containerAction('${esc(pid)}','stop')">■ STOP</button><button class="logs-tab-ctl restart" onclick="event.stopPropagation();restartContainer('${esc(pid)}')">↻</button></span>`;
+      }else{
+        ctls=`<span class="logs-tab-controls"><button class="logs-tab-ctl start" onclick="event.stopPropagation();doContainerAction('${esc(pid)}','start')">▶ START</button></span>`;
+      }
+    }
+    return`<button class="logs-tab ${isActive?'active':''}" onclick="selectLogsContainer('${esc(pid)}')"><span class="logs-tab-dot ${stateClass}"></span>${esc(label)}${ctls}</button>`;
+  }).join('');
+}
+
+function selectLogsContainer(pid){
+  logsState.activeContainer=pid;
+  logsState.rawText='';
+  document.getElementById('logsContent').innerHTML='Waiting for logs...';
+  document.getElementById('logsSearchInput').value='';
+  logsState.filterQuery='';
+  renderLogsTabs();
+  if(logsState.autoRefresh) startLogsPolling();
+  else fetchLogsView();
+}
+
+function startLogsPolling(){
+  stopLogsPolling();
+  fetchLogsView();
+  logsState.pollTimer=setInterval(fetchLogsView,3000);
+}
+
+function stopLogsPolling(){
+  if(logsState.pollTimer){clearInterval(logsState.pollTimer);logsState.pollTimer=null;}
+}
+
+function toggleLogsViewAuto(){
+  logsState.autoRefresh=!logsState.autoRefresh;
+  const btn=document.getElementById('logsAutoBtn');
+  btn.textContent=`AUTO: ${logsState.autoRefresh?'ON':'OFF'}`;
+  btn.classList.toggle('btn-primary',logsState.autoRefresh);
+  btn.classList.toggle('btn-ghost',!logsState.autoRefresh);
+  if(logsState.autoRefresh) startLogsPolling();
+  else stopLogsPolling();
+}
+
+function clearLogsViewDisplay(){
+  logsState.rawText='';
+  document.getElementById('logsContent').innerHTML='<span style="color:var(--text-dim)">Cleared.</span>';
+}
+
+async function fetchLogsView(){
+  if(!logsState.activeContainer)return;
+  try{
+    const r=await fetch(`${API}/api/containers/${logsState.activeContainer}/logs?lines=500`);
+    if(!r.ok)return;
+    const d=await r.json();
+    if(d.logs){
+      logsState.rawText=d.logs;
+      renderLogsOutput(d.logs);
+    }
+  }catch{}
+}
+
+function renderLogsOutput(text){
+  const el=document.getElementById('logsContent');
+  const wrap=document.querySelector('.logs-body-wrap');
+  const atBot=wrap.scrollHeight-wrap.scrollTop-wrap.clientHeight<50;
+  const hasAnsi=/\x1b\[/.test(text);
+  let lines;
+  if(hasAnsi){
+    // ANSI: convert to HTML, then split into lines for filtering
+    const html=ansiToHtml(text);
+    lines=html.split('\n');
+  }else{
+    lines=text.split('\n').map(l=>{
+      const e=esc(l);
+      if(/error|exception|fail|critical/i.test(l))return`<span class="log-line-error">${e}</span>`;
+      if(/warn/i.test(l))return`<span class="log-line-warn">${e}</span>`;
+      if(/debug|trace/i.test(l))return`<span class="log-line-debug">${e}</span>`;
+      return e;
+    });
+  }
+  // Apply filter
+  const q=logsState.filterQuery;
+  if(q){
+    const lq=q.toLowerCase();
+    lines=lines.filter(l=>{
+      // Strip HTML tags for matching
+      const plain=l.replace(/<[^>]*>/g,'').toLowerCase();
+      return plain.includes(lq);
+    });
+    // Highlight matches
+    if(lines.length>0){
+      const escaped=q.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+      const re=new RegExp(`(${escaped})`,'gi');
+      lines=lines.map(l=>{
+        // Only highlight in text content, not inside tags
+        return l.replace(/>([^<]*)</g,(match,txt)=>{
+          return '>'+txt.replace(re,'<span class="log-line-match">$1</span>')+'<';
+        });
+      });
+    }
+  }
+  el.innerHTML=lines.join('\n')||'<span style="color:var(--text-dim)">No matching lines.</span>';
+  if(atBot) wrap.scrollTop=wrap.scrollHeight;
+}
+
+function filterLogOutput(){
+  logsState.filterQuery=document.getElementById('logsSearchInput').value;
+  if(logsState.rawText) renderLogsOutput(logsState.rawText);
+}
+
 const ANSI_COLORS={'30':'ansi-black','31':'ansi-red','32':'ansi-green','33':'ansi-yellow','34':'ansi-blue','35':'ansi-magenta','36':'ansi-cyan','37':'ansi-white','90':'ansi-bright-black','91':'ansi-bright-red','92':'ansi-bright-green','93':'ansi-bright-yellow','94':'ansi-bright-blue','95':'ansi-bright-magenta','96':'ansi-bright-cyan','97':'ansi-bright-white'};
 function ansiToHtml(text){const e=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');let r='',o=0;const parts=e.split(/\x1b\[([0-9;]*)m/);for(let i=0;i<parts.length;i++){if(i%2===0){r+=parts[i];}else{while(o>0){r+='</span>';o--;}const cls=[];for(const c of parts[i].split(';')){if(c==='1')cls.push('ansi-bold');else if(c==='2')cls.push('ansi-dim');else if(ANSI_COLORS[c])cls.push(ANSI_COLORS[c]);}if(cls.length){r+=`<span class="${cls.join(' ')}">`;o++;}}}while(o>0){r+='</span>';o--;}return r;}
-function renderLogs(text){const el=document.getElementById('logContent');const body=document.getElementById('logBody');const atBot=body.scrollHeight-body.scrollTop-body.clientHeight<40;el.innerHTML=/\x1b\[/.test(text)?ansiToHtml(text):text.split('\n').map(l=>{const e=esc(l);if(/error|exception|fail|critical/i.test(l))return`<span class="log-line-error">${e}</span>`;if(/warn/i.test(l))return`<span class="log-line-warn">${e}</span>`;if(/debug|trace/i.test(l))return`<span class="log-line-debug">${e}</span>`;return e;}).join('\n');if(atBot)body.scrollTop=body.scrollHeight;}
 
 // ── View switch ──
-function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');if(v==='presets'){renderPresetsToolbar();refreshPresets();stopLogPolling();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();stopLogPolling();}else showLogPanel();}
+function switchView(v){state.currentView=v;document.getElementById('viewMods').style.display=v==='mods'?'':'none';document.getElementById('viewPresets').style.display=v==='presets'?'':'none';document.getElementById('viewConfig').style.display=v==='config'?'':'none';document.getElementById('viewLogs').style.display=v==='logs'?'':'none';document.getElementById('navMods').classList.toggle('active',v==='mods');document.getElementById('navPresets').classList.toggle('active',v==='presets');document.getElementById('navConfig').classList.toggle('active',v==='config');document.getElementById('navLogs').classList.toggle('active',v==='logs');if(v==='presets'){renderPresetsToolbar();refreshPresets();}else if(v==='config'){renderConfigToolbar();if(state.activeProfile&&!configState.sources.length)refreshConfigFiles();}else if(v==='logs'){renderLogsTabs();if(logsState.autoRefresh)startLogsPolling();}if(v!=='logs')stopLogsPolling();}
 
 // ── Config Editor ──
 const configState = { sources: [], openFile: null, originalContent: '', modified: false, openSources: {}, openFolders: {}, fileType: 'text' };
