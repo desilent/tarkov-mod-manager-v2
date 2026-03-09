@@ -348,15 +348,83 @@ def scan_all_mods(profile_id: str) -> list[dict]:
 
 def read_mod_meta(path: Path) -> dict:
     meta = {"version": None, "author": None, "description": None}
-    pkg = path / "package.json" if path.is_dir() else None
-    if pkg and pkg.exists():
-        try:
-            with open(pkg) as f:
-                data = json.load(f)
-            meta["version"] = data.get("version")
-            meta["author"] = data.get("author")
-            meta["description"] = data.get("description")
-        except Exception: pass
+    if not path.is_dir():
+        return meta
+
+    # Strategy 1: package.json in root (standard SPT server mod)
+    pkg = path / "package.json"
+    if pkg.exists():
+        meta = _parse_package_json(pkg, meta)
+        if meta["version"]:
+            return meta
+
+    # Strategy 2: package.json in src/<modname>/ or src/ (common nested pattern)
+    src_dir = path / "src"
+    if src_dir.exists() and src_dir.is_dir():
+        for child in src_dir.iterdir():
+            if child.is_dir():
+                nested_pkg = child / "package.json"
+                if nested_pkg.exists():
+                    meta = _parse_package_json(nested_pkg, meta)
+                    if meta["version"]:
+                        return meta
+        # Also check src/package.json directly
+        nested_pkg = src_dir / "package.json"
+        if nested_pkg.exists():
+            meta = _parse_package_json(nested_pkg, meta)
+            if meta["version"]:
+                return meta
+
+    # Strategy 3: Find any package.json up to 3 levels deep
+    try:
+        for pkg_file in path.rglob("package.json"):
+            # Skip node_modules
+            if "node_modules" in str(pkg_file):
+                continue
+            rel = pkg_file.relative_to(path)
+            if len(rel.parts) <= 3:
+                meta = _parse_package_json(pkg_file, meta)
+                if meta["version"]:
+                    return meta
+    except Exception:
+        pass
+
+    # Strategy 4: Look for config.json or mod.json (some mods use these)
+    for config_name in ["config.json", "mod.json", "manifest.json"]:
+        cfg = path / config_name
+        if cfg.exists():
+            try:
+                with open(cfg) as f:
+                    data = json.load(f)
+                if isinstance(data, dict):
+                    meta["version"] = meta["version"] or data.get("version") or data.get("modVersion")
+                    meta["author"] = meta["author"] or data.get("author") or data.get("authorName")
+                    meta["description"] = meta["description"] or data.get("description")
+                    if meta["version"]:
+                        return meta
+            except Exception:
+                pass
+
+    return meta
+
+def _parse_package_json(pkg_path: Path, meta: dict) -> dict:
+    """Parse a package.json and extract version/author/description."""
+    try:
+        with open(pkg_path) as f:
+            data = json.load(f)
+        meta["version"] = meta["version"] or data.get("version")
+        meta["author"] = meta["author"] or data.get("author")
+        meta["description"] = meta["description"] or data.get("description")
+        # Some SPT mods nest info differently
+        if not meta["version"] and "akiVersion" in data:
+            meta["version"] = data.get("akiVersion")
+        if not meta["version"] and "sptVersion" in data:
+            meta["version"] = data.get("sptVersion")
+        # Handle author as object (npm style: {name: "...", email: "..."})
+        if isinstance(meta["author"], dict):
+            meta["author"] = meta["author"].get("name", str(meta["author"]))
+    except Exception:
+        pass
     return meta
 
 def get_size(path: Path) -> int:
