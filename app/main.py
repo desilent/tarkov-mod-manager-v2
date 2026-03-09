@@ -468,64 +468,102 @@ def _try_parse_json_meta(file_path: Path, meta: dict) -> dict:
     return meta
 
 def _read_dll_version(dll_path: Path) -> dict:
-    """Extract version info from a .NET/BepInEx plugin DLL."""
+    """Extract version info from a .NET/BepInEx plugin DLL by parsing the User Strings heap."""
     result = {"version": None, "author": None, "description": None}
     try:
         data = dll_path.read_bytes()
-        import re
+        import re, struct
 
-        # Decode as UTF-8 for string scanning
-        text = data.decode("utf-8", errors="replace")
+        # ── Strategy A: Parse .NET #US (User Strings) heap for BepInPlugin data ──
+        # BepInPlugin stores: GUID ("com.author.mod"), display name, version
+        # as consecutive UTF-16LE strings in the #US heap with length prefixes
+        BLACKLIST_VERSIONS = {"4.0.30319", "2.0.50727", "0.0.0.0", "0.0.0", "1.0.0.0"}
 
-        # Strategy A: Find BepInPlugin attribute strings
-        # BepInEx plugins contain their GUID, name, and version as consecutive strings
-        # Pattern: "com.author.modname" followed nearby by a semver like "1.2.3"
-        # Look for BepInPlugin-style GUIDs (com.something.something)
-        guid_matches = re.finditer(r'(com\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_.]+)', text)
-        for gm in guid_matches:
-            # Search in the ~200 bytes after the GUID for a version string
-            search_start = gm.end()
-            search_region = text[search_start:search_start + 200]
-            ver_match = re.search(r'(\d+\.\d+\.\d+(?:\.\d+)?)', search_region)
-            if ver_match:
-                v = ver_match.group(1)
-                # Filter out CLR/framework versions
-                if v in ("4.0.30319", "2.0.50727", "0.0.0.0", "0.0.0", "1.0.0.0"):
+        def read_us_string(d, offset):
+            """Read a .NET User Strings heap entry."""
+            if offset >= len(d):
+                return None, offset
+            b = d[offset]
+            if b == 0 or b >= 0x80:
+                return None, offset + 1
+            str_start = offset + 1
+            str_end = str_start + b - 1  # -1 for trailing flag byte
+            if str_end > len(d) or b < 3:
+                return None, offset + 1
+            try:
+                s = d[str_start:str_end].decode('utf-16-le', errors='strict')
+                if s.isprintable():
+                    return s, str_end + 1
+            except Exception:
+                pass
+            return None, str_end + 1
+
+        # Find "com." in UTF-16LE
+        target = 'com.'.encode('utf-16-le')
+        pos = 0
+        while pos < len(data):
+            pos = data.find(target, pos)
+            if pos < 0:
+                break
+            # Find the length byte preceding this UTF-16 string
+            for back in range(1, 4):
+                str_offset = pos - back
+                if str_offset < 0:
                     continue
-                result["version"] = v
-                # Try to extract author from GUID (com.AUTHOR.modname)
-                guid_parts = gm.group(1).split(".")
-                if len(guid_parts) >= 2 and not result["author"]:
-                    result["author"] = guid_parts[1]
-                return result
+                s, next_off = read_us_string(data, str_offset)
+                if s and s.startswith('com.') and '.' in s[4:]:
+                    # Found a GUID string — read the next strings looking for a version
+                    candidates = []
+                    off = next_off
+                    for _ in range(6):
+                        ns, off = read_us_string(data, off)
+                        if ns:
+                            candidates.append(ns)
+                        else:
+                            break
+                    # Look for a semver pattern among the candidates
+                    for i, c in enumerate(candidates):
+                        ver_match = re.match(r'^~?(\d+\.\d+\.\d+(?:\.\d+)?)$', c.strip())
+                        if ver_match and ver_match.group(1) not in BLACKLIST_VERSIONS:
+                            result["version"] = ver_match.group(1)
+                            # GUID format: com.author.modname — extract author
+                            guid_parts = s.split('.')
+                            if len(guid_parts) >= 3:
+                                result["author"] = guid_parts[1]
+                            # The string before the version might be the display name or author
+                            if i >= 1:
+                                # Check if the string just before version looks like an author name
+                                prev = candidates[i - 1]
+                                if len(prev) < 40 and not prev.startswith('com.'):
+                                    result["author"] = prev
+                            if i >= 2:
+                                # Display name / description is typically candidates[0]
+                                result["description"] = candidates[0][:200] if candidates[0] else None
+                            return result
+                    break  # Only try first length-byte alignment that works
+            pos += 4
 
-        # Strategy B: Look for AssemblyFileVersion or AssemblyInformationalVersion
-        # These are stored as UTF-16LE strings in .NET assemblies
+        # ── Strategy B: AssemblyFileVersion / AssemblyInformationalVersion ──
+        text = data.decode("utf-8", errors="replace")
         text_u16 = data.decode("utf-16-le", errors="replace")
-        for attr_text in [text_u16, text]:
-            # AssemblyFileVersion is more reliable than AssemblyVersion
+        for src in [text, text_u16]:
             for pattern in [
+                r'AssemblyInformationalVersion[^\d]{0,20}(\d+\.\d+\.\d+(?:\.\d+)?)',
                 r'AssemblyFileVersion[^\d]{0,20}(\d+\.\d+\.\d+(?:\.\d+)?)',
-                r'AssemblyInformationalVersion[^\d]{0,20}(\d+\.\d+\.\d+[^\x00\ufffd]*)',
-                r'FileVersion[^\d]{0,20}(\d+\.\d+\.\d+(?:\.\d+)?)',
             ]:
-                m = re.search(pattern, attr_text)
+                m = re.search(pattern, src)
                 if m:
-                    v = m.group(1).strip().split('\x00')[0].strip()
-                    if v and v not in ("4.0.30319", "2.0.50727", "0.0.0.0", "0.0.0", "1.0.0.0"):
+                    v = m.group(1).strip()
+                    if v not in BLACKLIST_VERSIONS:
                         result["version"] = v
                         return result
 
-        # Strategy C: Scan raw bytes for the PE version resource
-        # The VS_FIXEDFILEINFO structure contains file version as 4 uint16s
-        # Signature: 0xFEEF04BD
+        # ── Strategy C: PE version resource (VS_FIXEDFILEINFO) ──
         sig = b'\xbd\x04\xef\xfe'
-        pos = data.find(sig)
-        if pos >= 0 and pos + 52 <= len(data):
-            import struct
-            # File version is at offset +8 from signature: MS(hi,lo), LS(hi,lo)
-            ms = struct.unpack_from('<I', data, pos + 8)[0]
-            ls = struct.unpack_from('<I', data, pos + 12)[0]
+        sig_pos = data.find(sig)
+        if sig_pos >= 0 and sig_pos + 52 <= len(data):
+            ms = struct.unpack_from('<I', data, sig_pos + 8)[0]
+            ls = struct.unpack_from('<I', data, sig_pos + 12)[0]
             major = (ms >> 16) & 0xFFFF
             minor = ms & 0xFFFF
             build = (ls >> 16) & 0xFFFF
@@ -533,7 +571,7 @@ def _read_dll_version(dll_path: Path) -> dict:
             v = f"{major}.{minor}.{build}"
             if patch > 0:
                 v += f".{patch}"
-            if v not in ("0.0.0", "0.0.0.0", "4.0.30319"):
+            if v not in BLACKLIST_VERSIONS:
                 result["version"] = v
 
     except Exception:
